@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { apiService } from '@/lib/api-service';
+import { useAuth } from '@/hooks/useAuth';
 import { Loader2, X, Plus, Edit, Trash2 } from 'lucide-react';
 
 interface CategoriesModalProps {
@@ -27,6 +28,7 @@ interface CategoryFormData {
 }
 
 export default function CategoriesModal({ isOpen, onClose, onSuccess }: CategoriesModalProps) {
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export default function CategoriesModal({ isOpen, onClose, onSuccess }: Categori
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getProductCategories();
+      const response = await apiService.getCategories();
       if (response.success) {
         const data = response.data as any;
         setCategories(Array.isArray(data) ? data : data.results || []);
@@ -67,9 +69,14 @@ export default function CategoriesModal({ isOpen, onClose, onSuccess }: Categori
     try {
       let response;
       if (editingCategory) {
-        response = await apiService.updateProductCategory(editingCategory.toString(), formData);
+        response = await apiService.updateCategory(editingCategory.toString(), formData);
       } else {
-        response = await apiService.createProductCategory(formData);
+        // Add store ID from authenticated user for new categories
+        const categoryData = {
+          ...formData,
+          store: user?.store
+        };
+        response = await apiService.createCategory(categoryData);
       }
 
       if (response.success) {
@@ -101,7 +108,7 @@ export default function CategoriesModal({ isOpen, onClose, onSuccess }: Categori
 
     try {
       setLoading(true);
-      const response = await apiService.deleteProductCategory(categoryId.toString());
+      const response = await apiService.deleteCategory(categoryId.toString());
       if (response.success) {
         onSuccess();
         fetchCategories();

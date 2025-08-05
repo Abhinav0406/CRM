@@ -1,9 +1,10 @@
 from rest_framework import serializers
-from .models import Product, Category, ProductVariant
+from .models import Product, Category, ProductVariant, ProductInventory, StockTransfer
 
 
 class CategorySerializer(serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
+    store_name = serializers.CharField(source='store.name', read_only=True)
     
     class Meta:
         model = Category
@@ -12,6 +13,16 @@ class CategorySerializer(serializers.ModelSerializer):
     
     def get_product_count(self, obj):
         return obj.products.count()
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        if user.role == 'business_admin':
+            validated_data['scope'] = 'global'
+        else:
+            validated_data['store'] = user.store
+            validated_data['scope'] = 'store'
+        validated_data['tenant'] = user.tenant
+        return super().create(validated_data)
 
 
 class ProductVariantSerializer(serializers.ModelSerializer):
@@ -32,6 +43,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True)
     main_image_url = serializers.SerializerMethodField()
     additional_images_urls = serializers.SerializerMethodField()
     is_in_stock = serializers.SerializerMethodField()
@@ -83,6 +95,14 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.variants.count()
     
     def create(self, validated_data):
+        user = self.context['request'].user
+        if user.role == 'business_admin':
+            validated_data['scope'] = 'global'
+        else:
+            validated_data['store'] = user.store
+            validated_data['scope'] = 'store'
+        validated_data['tenant'] = user.tenant
+        
         # Handle file uploads
         main_image = self.context['request'].FILES.get('main_image')
         additional_images = self.context['request'].FILES.getlist('additional_images')
@@ -121,6 +141,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class ProductListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True)
     main_image_url = serializers.SerializerMethodField()
     is_in_stock = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
@@ -137,7 +158,8 @@ class ProductListSerializer(serializers.ModelSerializer):
             'dimensions', 'material', 'color', 'size', 'status',
             'is_featured', 'is_bestseller', 'main_image_url',
             'is_in_stock', 'is_low_stock', 'current_price',
-            'profit_margin', 'variant_count', 'created_at', 'updated_at'
+            'profit_margin', 'variant_count', 'store', 'store_name',
+            'scope', 'created_at', 'updated_at'
         ]
     
     def get_main_image_url(self, obj):
@@ -169,3 +191,63 @@ class ProductListSerializer(serializers.ModelSerializer):
 class ProductDetailSerializer(ProductSerializer):
     class Meta(ProductSerializer.Meta):
         fields = list(ProductSerializer.Meta.fields) + ['additional_images_urls']
+
+
+class ProductInventorySerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    store_name = serializers.CharField(source='store.name', read_only=True)
+    available_quantity = serializers.SerializerMethodField()
+    is_low_stock = serializers.SerializerMethodField()
+    is_out_of_stock = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProductInventory
+        fields = '__all__'
+        read_only_fields = ['last_updated']
+    
+    def get_available_quantity(self, obj):
+        return obj.available_quantity
+    
+    def get_is_low_stock(self, obj):
+        return obj.is_low_stock
+    
+    def get_is_out_of_stock(self, obj):
+        return obj.is_out_of_stock
+
+
+class StockTransferSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    from_store_name = serializers.CharField(source='from_store.name', read_only=True)
+    to_store_name = serializers.CharField(source='to_store.name', read_only=True)
+    requested_by_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = StockTransfer
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['requested_by'] = user
+        return super().create(validated_data)
+
+
+class StockTransferListSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_sku = serializers.CharField(source='product.sku', read_only=True)
+    from_store_name = serializers.CharField(source='from_store.name', read_only=True)
+    to_store_name = serializers.CharField(source='to_store.name', read_only=True)
+    requested_by_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = StockTransfer
+        fields = [
+            'id', 'from_store', 'from_store_name', 'to_store', 'to_store_name',
+            'product', 'product_name', 'product_sku', 'quantity', 'reason',
+            'requested_by', 'requested_by_name', 'approved_by', 'approved_by_name',
+            'status', 'transfer_date', 'notes', 'created_at', 'updated_at'
+        ]

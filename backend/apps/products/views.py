@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import action
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import timedelta
@@ -11,8 +12,12 @@ import csv
 import io
 from decimal import Decimal
 
-from .models import Product, Category, ProductVariant
-from .serializers import ProductSerializer, ProductListSerializer, ProductDetailSerializer, CategorySerializer, ProductVariantSerializer
+from .models import Product, Category, ProductVariant, ProductInventory, StockTransfer
+from .serializers import (
+    ProductSerializer, ProductListSerializer, ProductDetailSerializer, 
+    CategorySerializer, ProductVariantSerializer, ProductInventorySerializer,
+    StockTransferSerializer, StockTransferListSerializer
+)
 from apps.users.permissions import IsRoleAllowed
 from apps.tenants.models import Tenant
 
@@ -30,7 +35,33 @@ class ProductListView(generics.ListAPIView):
     pagination_class = CustomProductPagination
     
     def get_queryset(self):
-        queryset = Product.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Product.objects.filter(tenant=user.tenant)
+        
+        # Filter by scope first - this overrides role-based filtering
+        scope_filter = self.request.query_params.get('scope')
+        if scope_filter == 'all':
+            # When scope='all' is requested, show all products regardless of role
+            pass
+        elif scope_filter == 'global':
+            queryset = queryset.filter(scope='global')
+        elif scope_filter == 'store':
+            queryset = queryset.filter(scope='store')
+        else:
+            # Apply scoped visibility based on user role when no specific scope is requested
+            if user.role == 'business_admin':
+                # Business admin sees all products (global + store-specific)
+                pass
+            elif user.role == 'manager':
+                # Store manager sees their store products + global products
+                queryset = queryset.filter(
+                    Q(store=user.store) | Q(scope='global')
+                )
+            else:
+                # Other users see their store products + global products
+                queryset = queryset.filter(
+                    Q(store=user.store) | Q(scope='global')
+                )
         
         # Filter by status
         status_filter = self.request.query_params.get('status')
@@ -66,6 +97,7 @@ class ProductCreateView(generics.CreateAPIView):
     parser_classes = [MultiPartParser, FormParser]
     
     def perform_create(self, serializer):
+        # Store and scope are set in serializer.create() method
         serializer.save(tenant=self.request.user.tenant)
 
 
@@ -75,7 +107,16 @@ class ProductDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager', 'inhouse_sales', 'tele_calling', 'marketing'])]
     
     def get_queryset(self):
-        return Product.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Product.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class ProductUpdateView(generics.UpdateAPIView):
@@ -85,7 +126,16 @@ class ProductUpdateView(generics.UpdateAPIView):
     parser_classes = [MultiPartParser, FormParser]
     
     def get_queryset(self):
-        return Product.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Product.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class ProductDeleteView(generics.DestroyAPIView):
@@ -94,32 +144,59 @@ class ProductDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
     
     def get_queryset(self):
-        return Product.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Product.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class ProductStatsView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager', 'inhouse_sales', 'tele_calling', 'marketing'])]
     
     def get(self, request):
-        tenant = request.user.tenant
+        user = request.user
+        tenant = user.tenant
+        
+        # Base queryset with scoped visibility
+        if user.role == 'business_admin':
+            products_queryset = Product.objects.filter(tenant=tenant)
+        else:
+            products_queryset = Product.objects.filter(
+                tenant=tenant
+            ).filter(
+                Q(store=user.store) | Q(scope='global')
+            )
         
         # Basic stats
-        total_products = Product.objects.filter(tenant=tenant).count()
-        active_products = Product.objects.filter(tenant=tenant, status='active').count()
-        out_of_stock = Product.objects.filter(tenant=tenant, quantity=0).count()
-        low_stock = Product.objects.filter(tenant=tenant, quantity__lte=F('min_quantity')).count()
+        total_products = products_queryset.count()
+        active_products = products_queryset.filter(status='active').count()
+        out_of_stock = products_queryset.filter(quantity=0).count()
+        low_stock = products_queryset.filter(quantity__lte=F('min_quantity')).count()
         
         # Inventory value
-        total_value = Product.objects.filter(tenant=tenant).aggregate(
+        total_value = products_queryset.aggregate(
             total=Sum(F('quantity') * F('cost_price'))
         )['total'] or 0
         
         # Category stats
-        category_count = Category.objects.filter(tenant=tenant).count()
+        if user.role == 'business_admin':
+            category_queryset = Category.objects.filter(tenant=tenant)
+        else:
+            category_queryset = Category.objects.filter(
+                tenant=tenant
+            ).filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        category_count = category_queryset.count()
         
         # Recent activity
-        recent_products = Product.objects.filter(
-            tenant=tenant,
+        recent_products = products_queryset.filter(
             created_at__gte=timezone.now() - timedelta(days=30)
         ).count()
         
@@ -141,8 +218,16 @@ class CategoryListView(generics.ListAPIView):
     pagination_class = None  # Disable pagination for categories
     
     def get_queryset(self):
-        # Temporarily return all categories for debugging
-        return Category.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Category.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class CategoryCreateView(generics.CreateAPIView):
@@ -151,6 +236,7 @@ class CategoryCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
     
     def perform_create(self, serializer):
+        # Store and scope are set in serializer.create() method
         serializer.save(tenant=self.request.user.tenant)
 
 
@@ -160,7 +246,16 @@ class CategoryDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager', 'inhouse_sales', 'tele_calling', 'marketing'])]
     
     def get_queryset(self):
-        return Category.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Category.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class CategoryUpdateView(generics.UpdateAPIView):
@@ -169,7 +264,16 @@ class CategoryUpdateView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
     
     def get_queryset(self):
-        return Category.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Category.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
 class CategoryDeleteView(generics.DestroyAPIView):
@@ -178,9 +282,289 @@ class CategoryDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
     
     def get_queryset(self):
-        return Category.objects.filter(tenant=self.request.user.tenant)
+        user = self.request.user
+        queryset = Category.objects.filter(tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset
 
 
+# New Inventory Views
+class ProductInventoryListView(generics.ListAPIView):
+    serializer_class = ProductInventorySerializer
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    pagination_class = CustomProductPagination
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = ProductInventory.objects.filter(store__tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(store=user.store)
+        
+        # Filter by store
+        store_id = self.request.query_params.get('store')
+        if store_id and user.role == 'business_admin':
+            queryset = queryset.filter(store_id=store_id)
+        
+        # Filter by low stock
+        low_stock = self.request.query_params.get('low_stock')
+        if low_stock == 'true':
+            queryset = queryset.filter(quantity__lte=F('reorder_point'))
+        
+        # Filter by out of stock
+        out_of_stock = self.request.query_params.get('out_of_stock')
+        if out_of_stock == 'true':
+            queryset = queryset.filter(quantity=0)
+        
+        return queryset.order_by('-last_updated')
+
+
+class ProductInventoryUpdateView(generics.UpdateAPIView):
+    serializer_class = ProductInventorySerializer
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = ProductInventory.objects.filter(store__tenant=user.tenant)
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(store=user.store)
+        
+        return queryset
+
+
+# New Stock Transfer Views
+class StockTransferListView(generics.ListAPIView):
+    serializer_class = StockTransferListSerializer
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    pagination_class = CustomProductPagination
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = StockTransfer.objects.filter(
+            from_store__tenant=user.tenant
+        )
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            # Store managers see transfers involving their store
+            queryset = queryset.filter(
+                Q(from_store=user.store) | Q(to_store=user.store)
+            )
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Filter by store
+        store_id = self.request.query_params.get('store')
+        if store_id and user.role == 'business_admin':
+            queryset = queryset.filter(
+                Q(from_store_id=store_id) | Q(to_store_id=store_id)
+            )
+        
+        return queryset.order_by('-created_at')
+
+
+class StockTransferCreateView(generics.CreateAPIView):
+    serializer_class = StockTransferSerializer
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(requested_by=user)
+
+
+class StockTransferDetailView(generics.RetrieveAPIView):
+    serializer_class = StockTransferSerializer
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def get_queryset(self):
+        user = self.request.user
+        queryset = StockTransfer.objects.filter(
+            from_store__tenant=user.tenant
+        )
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(from_store=user.store) | Q(to_store=user.store)
+            )
+        
+        return queryset
+
+
+class StockTransferApproveView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def post(self, request, pk):
+        try:
+            transfer = StockTransfer.objects.get(
+                id=pk,
+                from_store__tenant=request.user.tenant
+            )
+            
+            # Check permissions - Only the receiving store can approve transfers
+            if request.user.role != 'business_admin':
+                if transfer.to_store != request.user.store:
+                    return Response({
+                        'success': False,
+                        'message': 'You can only approve transfers to your store'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            transfer.approve(request.user)
+            return Response({
+                'success': True,
+                'message': 'Transfer approved successfully'
+            })
+            
+        except StockTransfer.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Transfer not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class StockTransferCompleteView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def post(self, request, pk):
+        try:
+            transfer = StockTransfer.objects.get(
+                id=pk,
+                from_store__tenant=request.user.tenant
+            )
+            
+            # Check permissions - Only the sending store can complete transfers
+            if request.user.role != 'business_admin':
+                if transfer.from_store != request.user.store:
+                    return Response({
+                        'success': False,
+                        'message': 'You can only complete transfers from your store'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            if transfer.status != 'approved':
+                return Response({
+                    'success': False,
+                    'message': 'Transfer must be approved before completion'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            success = transfer.complete()
+            if success:
+                return Response({
+                    'success': True,
+                    'message': 'Transfer completed successfully'
+                })
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Insufficient stock for transfer'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except StockTransfer.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Transfer not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class StockTransferCancelView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    
+    def post(self, request, pk):
+        try:
+            transfer = StockTransfer.objects.get(
+                id=pk,
+                from_store__tenant=request.user.tenant
+            )
+            
+            # Check permissions - Only the requesting store can cancel transfers
+            if request.user.role != 'business_admin':
+                if transfer.from_store != request.user.store:
+                    return Response({
+                        'success': False,
+                        'message': 'You can only cancel transfers from your store'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            transfer.cancel()
+            return Response({
+                'success': True,
+                'message': 'Transfer cancelled successfully'
+            })
+            
+        except StockTransfer.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Transfer not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+# Global Catalogue View for Business Admin
+class GlobalCatalogueView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin'])]
+    
+    def get(self, request):
+        tenant = request.user.tenant
+        
+        # Get all products with their inventory across all stores
+        products = Product.objects.filter(tenant=tenant)
+        
+        catalogue_data = []
+        for product in products:
+            # Get inventory across all stores for this product
+            inventory_data = []
+            total_quantity = 0
+            
+            stores = tenant.stores.all()
+            for store in stores:
+                try:
+                    inventory = ProductInventory.objects.get(product=product, store=store)
+                    inventory_data.append({
+                        'store_id': store.id,
+                        'store_name': store.name,
+                        'quantity': inventory.quantity,
+                        'available_quantity': inventory.available_quantity,
+                        'is_low_stock': inventory.is_low_stock,
+                        'is_out_of_stock': inventory.is_out_of_stock
+                    })
+                    total_quantity += inventory.quantity
+                except ProductInventory.DoesNotExist:
+                    inventory_data.append({
+                        'store_id': store.id,
+                        'store_name': store.name,
+                        'quantity': 0,
+                        'available_quantity': 0,
+                        'is_low_stock': False,
+                        'is_out_of_stock': True
+                    })
+            
+            catalogue_data.append({
+                'product_id': product.id,
+                'product_name': product.name,
+                'product_sku': product.sku,
+                'scope': product.scope,
+                'store_name': product.store.name if product.store else 'Global',
+                'total_quantity': total_quantity,
+                'inventory_by_store': inventory_data
+            })
+        
+        return Response({
+            'catalogue': catalogue_data,
+            'total_products': len(catalogue_data),
+            'stores_count': tenant.stores.count()
+        })
+
+
+# Keep existing views for backward compatibility
 class ProductVariantListView(generics.ListAPIView):
     queryset = ProductVariant.objects.all()
     serializer_class = ProductVariantSerializer
@@ -273,10 +657,19 @@ class ProductsByCategoryView(generics.ListAPIView):
     
     def get_queryset(self):
         category_id = self.kwargs.get('category_id')
-        return Product.objects.filter(
-            tenant=self.request.user.tenant,
+        user = self.request.user
+        queryset = Product.objects.filter(
+            tenant=user.tenant,
             category_id=category_id
-        ).order_by('-created_at')
+        )
+        
+        # Apply scoped visibility
+        if user.role != 'business_admin':
+            queryset = queryset.filter(
+                Q(store=user.store) | Q(scope='global')
+            )
+        
+        return queryset.order_by('-created_at')
 
 
 class PublicProductListView(generics.ListAPIView):

@@ -108,6 +108,9 @@ interface Product {
   meta_description?: string;
   tags: string[];
   tenant: number;
+  store?: number;
+  store_name?: string;
+  scope: 'global' | 'store';
   created_at: string;
   updated_at: string;
   is_in_stock?: boolean;
@@ -115,6 +118,46 @@ interface Product {
   current_price?: number;
   profit_margin?: number;
   variant_count?: number;
+}
+
+interface ProductInventory {
+  id: number;
+  product: number;
+  product_name?: string;
+  product_sku?: string;
+  store: number;
+  store_name?: string;
+  quantity: number;
+  reserved_quantity: number;
+  reorder_point: number;
+  max_stock: number;
+  location?: string;
+  last_updated: string;
+  available_quantity?: number;
+  is_low_stock?: boolean;
+  is_out_of_stock?: boolean;
+}
+
+interface StockTransfer {
+  id: number;
+  from_store: number;
+  from_store_name?: string;
+  to_store: number;
+  to_store_name?: string;
+  product: number;
+  product_name?: string;
+  product_sku?: string;
+  quantity: number;
+  reason: string;
+  requested_by: number;
+  requested_by_name?: string;
+  approved_by?: number;
+  approved_by_name?: string;
+  status: 'pending' | 'approved' | 'completed' | 'cancelled';
+  transfer_date?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Sale {
@@ -193,6 +236,9 @@ interface Category {
   description?: string;
   parent?: number;
   tenant: number;
+  store?: number;
+  store_name?: string;
+  scope: 'global' | 'store';
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -261,11 +307,9 @@ class ApiService {
       if (authStorage) {
         try {
           const parsed = JSON.parse(authStorage);
-          console.log('Auth storage parsed:', parsed);
           
           // Try different possible structures
           const token = parsed.state?.token || parsed.token || null;
-          console.log('Retrieved token:', token ? `${token.substring(0, 10)}...` : null);
           return token;
         } catch (error) {
           console.error('Error parsing auth storage:', error);
@@ -283,7 +327,6 @@ class ApiService {
     const url = `${API_BASE_URL}${endpoint}`;
     
     const token = this.getAuthToken();
-    console.log('API Request:', { url, hasToken: !!token, token: token ? `${token.substring(0, 10)}...` : null });
     
     // Check if the request body is FormData
     const isFormData = options.body instanceof FormData;
@@ -303,26 +346,8 @@ class ApiService {
       },
     };
 
-    // Log the request body if it exists
-    if (options.body) {
-      console.log('API Request body:', options.body);
-      if (!isFormData) {
-        try {
-          const bodyObj = JSON.parse(options.body as string);
-          console.log('API Request body parsed:', bodyObj);
-        } catch (e) {
-          console.log('API Request body is not JSON:', options.body);
-        }
-      } else {
-        console.log('API Request body is FormData');
-      }
-    }
-
     try {
       const response = await fetch(url, config);
-      
-      console.log('API Response status:', response.status);
-      console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
       
       if (!response.ok) {
         console.error('API Error Response:', {
@@ -375,17 +400,12 @@ class ApiService {
       const contentType = response.headers.get('content-type');
       const contentDisposition = response.headers.get('content-disposition');
       
-      console.log('Response headers:', {
-        contentType,
-        contentDisposition,
-        url: response.url
-      });
+
       
       // Check if this is a file download response
       if (contentDisposition && contentDisposition.includes('attachment')) {
         // This is a file download, return the blob
         const blob = await response.blob();
-        console.log('Created blob:', blob);
         return {
           data: blob as any,
           success: true,
@@ -399,7 +419,6 @@ class ApiService {
       )) {
         // This is a file download, return the blob
         const blob = await response.blob();
-        console.log('Created blob from content type:', blob);
         return {
           data: blob as any,
           success: true,
@@ -410,7 +429,6 @@ class ApiService {
       let data;
       try {
         const responseText = await response.text();
-        console.log('API Response text:', responseText);
         
         if (responseText.trim() === '') {
           // Empty response, return success
@@ -423,8 +441,6 @@ class ApiService {
         // If JSON parsing fails, return success with empty data
         data = null;
       }
-      
-      console.log('API Response data:', data);
       
       // Check if the response is already in ApiResponse format
       if (data && typeof data === 'object' && 'success' in data) {
@@ -591,16 +607,48 @@ class ApiService {
     category?: string;
     search?: string;
     status?: string;
+    scope?: string;
   }): Promise<ApiResponse<Product[]>> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.category) queryParams.append('category', params.category);
     if (params?.search) queryParams.append('search', params.search);
     if (params?.status) queryParams.append('status', params.status);
+    if (params?.scope) queryParams.append('scope', params.scope);
     // Request more products per page to get all products
     queryParams.append('page_size', '200');
 
     return this.request(`/products/list/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  // Categories
+  async getCategories(params?: {
+    scope?: string;
+  }): Promise<ApiResponse<Category[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.scope) queryParams.append('scope', params.scope);
+
+    return this.request(`/products/categories/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  async createCategory(categoryData: Partial<Category>): Promise<ApiResponse<Category>> {
+    return this.request('/products/categories/create/', {
+      method: 'POST',
+      body: JSON.stringify(categoryData),
+    });
+  }
+
+  async updateCategory(id: string, categoryData: Partial<Category>): Promise<ApiResponse<Category>> {
+    return this.request(`/products/categories/${id}/update/`, {
+      method: 'PUT',
+      body: JSON.stringify(categoryData),
+    });
+  }
+
+  async deleteCategory(id: string): Promise<ApiResponse<void>> {
+    return this.request(`/products/categories/${id}/delete/`, {
+      method: 'DELETE',
+    });
   }
 
   async getMyProducts(params?: {
@@ -691,16 +739,87 @@ class ApiService {
   }
 
   async updateProductCategory(id: string, categoryData: Partial<Category>): Promise<ApiResponse<Category>> {
-    return this.request(`/products/categories/${id}/`, {
+    return this.request(`/products/categories/${id}/update/`, {
       method: 'PUT',
       body: JSON.stringify(categoryData),
     });
   }
 
   async deleteProductCategory(id: string): Promise<ApiResponse<void>> {
-    return this.request(`/products/categories/${id}/`, {
+    return this.request(`/products/categories/${id}/delete/`, {
       method: 'DELETE',
     });
+  }
+
+  // Inventory Management
+  async getInventory(params?: {
+    page?: number;
+    store?: string;
+    low_stock?: string;
+    out_of_stock?: string;
+  }): Promise<ApiResponse<ProductInventory[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.store) queryParams.append('store', params.store);
+    if (params?.low_stock) queryParams.append('low_stock', params.low_stock);
+    if (params?.out_of_stock) queryParams.append('out_of_stock', params.out_of_stock);
+
+    return this.request(`/products/inventory/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  async updateInventory(id: string, inventoryData: Partial<ProductInventory>): Promise<ApiResponse<ProductInventory>> {
+    return this.request(`/products/inventory/${id}/update/`, {
+      method: 'PUT',
+      body: JSON.stringify(inventoryData),
+    });
+  }
+
+  // Stock Transfers
+  async getStockTransfers(params?: {
+    page?: number;
+    status?: string;
+    store?: string;
+  }): Promise<ApiResponse<StockTransfer[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.store) queryParams.append('store', params.store);
+
+    return this.request(`/products/transfers/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  async createStockTransfer(transferData: Partial<StockTransfer>): Promise<ApiResponse<StockTransfer>> {
+    return this.request('/products/transfers/create/', {
+      method: 'POST',
+      body: JSON.stringify(transferData),
+    });
+  }
+
+  async getStockTransfer(id: string): Promise<ApiResponse<StockTransfer>> {
+    return this.request(`/products/transfers/${id}/`);
+  }
+
+  async approveStockTransfer(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/products/transfers/${id}/approve/`, {
+      method: 'POST',
+    });
+  }
+
+  async completeStockTransfer(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/products/transfers/${id}/complete/`, {
+      method: 'POST',
+    });
+  }
+
+  async cancelStockTransfer(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/products/transfers/${id}/cancel/`, {
+      method: 'POST',
+    });
+  }
+
+  // Global Catalogue (Business Admin only)
+  async getGlobalCatalogue(): Promise<ApiResponse<any>> {
+    return this.request('/products/global-catalogue/');
   }
 
   async importProducts(formData: FormData): Promise<ApiResponse<any>> {
@@ -1428,4 +1547,4 @@ class ApiService {
 
 export const apiService = new ApiService();
 export { ApiService };
-export type { User, Client, Product, Sale, SalesPipeline, Appointment, Category, DashboardStats, Store, SupportTicket }; 
+export type { User, Client, Product, ProductInventory, StockTransfer, Sale, SalesPipeline, Appointment, Category, DashboardStats, Store, SupportTicket }; 

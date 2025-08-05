@@ -332,7 +332,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
           console.log('Fetching data for AddCustomerModal...');
           
           // Fetch categories
-          const categoriesResponse = await apiService.getProductCategories();
+          const categoriesResponse = await apiService.getCategories();
           console.log('Categories response:', categoriesResponse);
           if (categoriesResponse.success && categoriesResponse.data) {
             const categoriesData = Array.isArray(categoriesResponse.data) 

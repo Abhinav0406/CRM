@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { apiService } from '@/lib/api-service';
+import { useAuth } from '@/hooks/useAuth';
 import { Loader2, X } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -45,6 +46,7 @@ interface ProductFormData {
 }
 
 export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProductModalProps) {
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState<ProductFormData>({
     name: '',
@@ -80,7 +82,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
 
   const fetchCategories = async () => {
     try {
-      const response = await apiService.getProductCategories();
+      const response = await apiService.getCategories();
       if (response.success) {
         const data = response.data as any;
         setCategories(Array.isArray(data) ? data : data.results || []);
@@ -121,6 +123,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
       formDataToSend.append('status', formData.status);
       formDataToSend.append('is_featured', formData.is_featured.toString());
       formDataToSend.append('is_bestseller', formData.is_bestseller.toString());
+
+      // Add store ID from authenticated user
+      if (user?.store) {
+        formDataToSend.append('store', user.store.toString());
+      }
 
       // Add main image
       if (mainImage) {

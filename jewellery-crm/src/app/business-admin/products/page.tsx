@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2, X } from 'lucide-react';
+import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2, X, Store, Globe } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
 import { 
   DropdownMenu,
@@ -46,6 +46,9 @@ interface Product {
   main_image_url?: string;
   additional_images: string[];
   additional_images_urls?: string[];
+  store?: number;
+  store_name?: string;
+  scope: 'global' | 'store';
   created_at: string;
   updated_at: string;
   is_in_stock?: boolean;
@@ -59,7 +62,10 @@ interface Category {
   id: number;
   name: string;
   description?: string;
-  product_count: number;
+  product_count?: number;
+  store?: number;
+  store_name?: string;
+  scope: 'global' | 'store';
 }
 
 export default function ProductsPage() {
@@ -68,6 +74,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'store'>('all');
+  const [storeFilter, setStoreFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
@@ -77,6 +85,8 @@ export default function ProductsPage() {
   const [selectedAction, setSelectedAction] = useState<'view' | 'edit' | 'delete' | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [globalCatalogue, setGlobalCatalogue] = useState<any>(null);
+  const [showGlobalCatalogue, setShowGlobalCatalogue] = useState(false);
   
   // Get user scope for scoped visibility
   const { userScope, canAccessAllData, canAccessStoreData } = useScopedVisibility();
@@ -84,7 +94,7 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     fetchCategories();
-  }, [currentPage, searchTerm, categoryFilter]);
+  }, [currentPage, searchTerm, categoryFilter, scopeFilter, storeFilter]);
 
   const fetchProducts = async () => {
     try {
@@ -100,20 +110,44 @@ export default function ProductsPage() {
           category: categoryFilter === 'all' ? undefined : categoryFilter,
         });
       } else {
-        // For managers and admins, use the regular endpoint (backend middleware handles scoping)
+        // For business admin and managers, use the regular endpoint
         response = await apiService.getProducts({
           page: currentPage,
           search: searchTerm || undefined,
           category: categoryFilter === 'all' ? undefined : categoryFilter,
+          scope: scopeFilter === 'all' ? undefined : scopeFilter,
         });
       }
-      
-      if (response.success) {
+
+      if (response.success && response.data) {
+        // Handle paginated response
+        let productsData: Product[] = [];
+        if (Array.isArray(response.data)) {
+          productsData = response.data;
+        } else if (typeof response.data === 'object' && response.data !== null) {
         const data = response.data as any;
-        setProducts(Array.isArray(data) ? data : data.results || []);
+          if (data.results && Array.isArray(data.results)) {
+            productsData = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            productsData = data.data;
+          }
+        }
+        
+        // Apply store filter if needed
+        if (storeFilter !== 'all') {
+          productsData = productsData.filter(product => 
+            product.store_name === storeFilter
+          );
+        }
+        
+        setProducts(productsData);
+        console.log(`Loaded ${productsData.length} products`);
+      } else {
+        console.warn('Products response is not valid:', response.data);
+        setProducts([]);
       }
     } catch (error) {
-      console.error('Failed to fetch products:', error);
+      console.error('Error fetching products:', error);
       setProducts([]);
     } finally {
       setLoading(false);
@@ -122,27 +156,48 @@ export default function ProductsPage() {
 
   const fetchCategories = async () => {
     try {
-      const response = await apiService.getProductCategories();
-      if (response.success) {
+      const response = await apiService.getCategories({
+        scope: scopeFilter === 'all' ? undefined : scopeFilter,
+      });
+      
+      if (response.success && response.data) {
+        let categoriesData: Category[] = [];
+        if (Array.isArray(response.data)) {
+          categoriesData = response.data;
+        } else if (typeof response.data === 'object' && response.data !== null) {
         const data = response.data as any;
-        setCategories(Array.isArray(data) ? data : data.results || []);
+          if (data.results && Array.isArray(data.results)) {
+            categoriesData = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            categoriesData = data.data;
+          }
+        }
+        setCategories(categoriesData);
       }
     } catch (error) {
-      console.error('Failed to fetch categories:', error);
+      console.error('Error fetching categories:', error);
       setCategories([]);
     }
   };
 
+  const fetchGlobalCatalogue = async () => {
+    try {
+      const response = await apiService.getGlobalCatalogue();
+      if (response.success && response.data) {
+        setGlobalCatalogue(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching global catalogue:', error);
+    }
+  };
+
   const getStatusBadgeVariant = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return 'default';
-      case 'inactive':
-        return 'secondary';
-      case 'out_of_stock':
-        return 'destructive';
-      default:
-        return 'outline';
+    switch (status) {
+      case 'active': return 'default';
+      case 'inactive': return 'secondary';
+      case 'discontinued': return 'destructive';
+      case 'out_of_stock': return 'destructive';
+      default: return 'default';
     }
   };
 
@@ -150,11 +205,13 @@ export default function ProductsPage() {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -162,8 +219,8 @@ export default function ProductsPage() {
   };
 
   const handleAddProductSuccess = () => {
+    setIsAddModalOpen(false);
     fetchProducts();
-    fetchCategories();
   };
 
   const handleProductAction = (product: Product, action: 'view' | 'edit' | 'delete') => {
@@ -188,158 +245,133 @@ export default function ProductsPage() {
     setSelectedImage(null);
   };
 
-  // Add keyboard support for closing image modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && imageModalOpen) {
+      if (e.key === 'Escape') {
         closeImageModal();
       }
     };
 
     if (imageModalOpen) {
       document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
     }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [imageModalOpen]);
+
+  const getScopeIcon = (scope: string) => {
+    return scope === 'global' ? <Globe className="w-4 h-4" /> : <Store className="w-4 h-4" />;
+  };
+
+  const getScopeLabel = (scope: string) => {
+    return scope === 'global' ? 'Global' : 'Store';
+  };
+
+  const getScopeBadgeVariant = (scope: string) => {
+    return scope === 'global' ? 'default' : 'secondary';
+  };
+
+  // Get unique store names for filter
+  const storeNames = Array.from(new Set(products.map(p => p.store_name).filter(Boolean))) as string[];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Products</h1>
-          <p className="text-text-secondary mt-1">Manage your jewelry inventory and catalog</p>
-          <div className="mt-2">
-            <ScopeIndicator showDetails={false} />
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+          <p className="text-muted-foreground">
+            Manage your product catalog and inventory
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex gap-2">
           <Button 
             variant="outline" 
-            size="sm" 
-            className="flex items-center gap-2"
-            onClick={() => setIsImportModalOpen(true)}
+            onClick={() => {
+              setShowGlobalCatalogue(!showGlobalCatalogue);
+              if (!showGlobalCatalogue && !globalCatalogue) {
+                fetchGlobalCatalogue();
+              }
+            }}
           >
-            <Package className="w-4 h-4" />
-            Import
+            <Globe className="w-4 h-4 mr-2" />
+            {showGlobalCatalogue ? 'Hide' : 'Show'} Global Catalogue
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="flex items-center gap-2"
-            onClick={() => setIsCategoriesModalOpen(true)}
-          >
-            <Tag className="w-4 h-4" />
+          <Button onClick={() => setIsCategoriesModalOpen(true)}>
+            <Tag className="w-4 h-4 mr-2" />
             Categories
           </Button>
-          <Button 
-            className="btn-primary flex items-center gap-2"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            <Plus className="w-4 h-4" />
+          <Button onClick={() => setIsAddModalOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
             Add Product
           </Button>
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Total Products</p>
-                <p className="text-2xl font-bold text-text-primary">{products.length}</p>
+      {/* Global Catalogue View */}
+      {showGlobalCatalogue && globalCatalogue && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="w-5 h-5" />
+              Global Catalogue Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{globalCatalogue.total_products || 0}</div>
+                <div className="text-sm text-muted-foreground">Total Products</div>
               </div>
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-600 text-sm font-semibold">📦</span>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{globalCatalogue.stores_count || 0}</div>
+                <div className="text-sm text-muted-foreground">Stores</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">
+                  {globalCatalogue.catalogue?.length || 0}
+            </div>
+                <div className="text-sm text-muted-foreground">Product Types</div>
               </div>
             </div>
+            
+            {globalCatalogue.catalogue && globalCatalogue.catalogue.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold">Product Distribution:</h4>
+                {globalCatalogue.catalogue.slice(0, 10).map((item: any, index: number) => (
+                  <div key={index} className="flex justify-between items-center p-2 bg-muted rounded">
+                    <span className="font-medium">{item.product_name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {item.total_quantity} units across {item.inventory_by_store?.length || 0} stores
+                    </span>
+              </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Categories</p>
-                <p className="text-2xl font-bold text-text-primary">{categories.length}</p>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 text-sm font-semibold">🏷️</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Low Stock</p>
-                <p className="text-2xl font-bold text-text-primary">
-                  {products.filter(p => p.quantity <= p.min_quantity).length}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-orange-600 text-sm font-semibold">⚠️</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Total Value</p>
-                <p className="text-2xl font-bold text-text-primary">
-                  {formatCurrency(products.reduce((sum, p) => sum + (p.selling_price * p.quantity), 0))}
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                <span className="text-purple-600 text-sm font-semibold">💰</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
 
-      {/* Product Categories */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Product Categories</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categories.map((category) => (
-              <div key={category.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-text-primary">{category.name}</h3>
-                  <Badge variant="outline">{category.product_count} products</Badge>
-                </div>
-                {category.description && (
-                  <p className="text-sm text-text-secondary">{category.description}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Search and Filters */}
-      <Card className="shadow-sm">
-        <CardContent className="p-6">
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search products..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                  className="pl-8"
               />
+              </div>
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Filter by category" />
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
@@ -350,120 +382,130 @@ export default function ProductsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="flex items-center gap-2"
-              onClick={() => {
-                // TODO: Implement advanced filters
-                alert('Advanced filters coming soon!');
-              }}
-            >
-              <Filter className="w-4 h-4" />
-              More Filters
-            </Button>
+            <Select value={scopeFilter} onValueChange={(value: 'all' | 'global' | 'store') => setScopeFilter(value)}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Scope" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Scopes</SelectItem>
+                <SelectItem value="global">Global</SelectItem>
+                <SelectItem value="store">Store</SelectItem>
+              </SelectContent>
+            </Select>
+            {storeNames.length > 0 && (
+              <Select value={storeFilter} onValueChange={setStoreFilter}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Store" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Stores</SelectItem>
+                  {storeNames.map((storeName) => (
+                    <SelectItem key={storeName} value={storeName}>
+                      {storeName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Products Table */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>All Products</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Products Grid */}
           {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-text-secondary">Loading products...</div>
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading products...</p>
             </div>
-          ) : products.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-text-secondary mb-2">No products found</div>
-              <Button 
-                variant="outline"
-                onClick={() => setIsAddModalOpen(true)}
-              >
-                Add your first product
-              </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Product</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Category</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Price</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Stock</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Created</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {products.map((product) => (
-                    <tr key={product.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-3">
+            <Card key={product.id} className="overflow-hidden">
+              <div className="relative">
                           {product.main_image_url ? (
                             <img
                               src={product.main_image_url}
                               alt={product.name}
-                              title="Click to enlarge image"
-                              className="w-16 h-16 object-cover rounded-lg border hover:scale-105 transition-transform duration-200 cursor-pointer"
+                    className="w-full h-48 object-cover cursor-pointer"
                               onClick={() => handleImageClick(product.main_image_url!)}
                             />
                           ) : (
-                            <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
-                              <span className="text-gray-400 text-xs">No Image</span>
+                  <div className="w-full h-48 bg-muted flex items-center justify-center">
+                    <Package className="w-12 h-12 text-muted-foreground" />
                             </div>
                           )}
-                          <div>
-                            <div className="font-medium text-text-primary">{product.name}</div>
-                            <div className="text-sm text-text-secondary">SKU: {product.sku}</div>
-                            {product.material && (
-                              <div className="text-xs text-text-secondary">
-                                {product.material} {product.color && `(${product.color})`}
+                
+                {/* Scope Badge */}
+                <div className="absolute top-2 left-2">
+                  <Badge variant={getScopeBadgeVariant(product.scope)} className="text-xs">
+                    {getScopeIcon(product.scope)}
+                    <span className="ml-1">{getScopeLabel(product.scope)}</span>
+                  </Badge>
+                </div>
+
+                {/* Store Badge */}
+                {product.store_name && (
+                  <div className="absolute top-2 right-2">
+                    <Badge variant="outline" className="text-xs">
+                      {product.store_name}
+                    </Badge>
                               </div>
                             )}
+
+                {/* Status Badge */}
+                <div className="absolute bottom-2 left-2">
+                  <Badge variant={getStatusBadgeVariant(product.status)}>
+                    {product.status.replace('_', ' ')}
+                  </Badge>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
+
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-lg truncate" title={product.name}>
+                    {product.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
+                  
+                  {product.category_name && (
+                    <p className="text-sm text-muted-foreground">
+                      Category: {product.category_name}
+                    </p>
+                  )}
+
+                  <div className="flex justify-between items-center">
                         <div>
-                          <div className="text-text-primary">{product.category_name || 'Uncategorized'}</div>
-                          {product.brand && (
-                            <div className="text-sm text-text-secondary">{product.brand}</div>
+                      <p className="text-lg font-bold">
+                        {formatCurrency(product.current_price || product.selling_price)}
+                      </p>
+                      {product.discount_price && product.discount_price !== product.selling_price && (
+                        <p className="text-sm text-muted-foreground line-through">
+                          {formatCurrency(product.selling_price)}
+                        </p>
                           )}
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <div className="font-medium text-text-primary">
-                            {formatCurrency(product.selling_price)}
-                          </div>
-                          <div className="text-sm text-text-secondary">
-                            Cost: {formatCurrency(product.cost_price)}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <div className="font-medium text-text-primary">{product.quantity}</div>
-                          <div className="text-sm text-text-secondary">
-                            Min: {product.min_quantity}
+                    <div className="text-right">
+                      <p className="text-sm font-medium">
+                        Stock: {product.quantity}
+                      </p>
+                      {product.is_low_stock && (
+                        <p className="text-xs text-yellow-600">Low Stock</p>
+                      )}
                           </div>
                         </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant={getStatusBadgeVariant(product.status)}>
-                          {product.status?.charAt(0).toUpperCase() + product.status?.slice(1)}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-text-secondary">
-                        {formatDate(product.created_at)}
-                      </td>
-                      <td className="py-3 px-4">
+
+                  <div className="flex justify-between items-center pt-2">
+                    <div className="flex gap-1">
+                      {product.is_featured && (
+                        <Badge variant="secondary" className="text-xs">Featured</Badge>
+                      )}
+                      {product.is_bestseller && (
+                        <Badge variant="secondary" className="text-xs">Best Seller</Badge>
+                      )}
+                          </div>
+                    
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -472,31 +514,44 @@ export default function ProductsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleProductAction(product, 'view')}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleProductAction(product, 'edit')}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit Product
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleProductAction(product, 'delete')}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Product
+                        <DropdownMenuItem onClick={() => handleProductAction(product, 'delete')}>
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
             </div>
           )}
+
+      {!loading && products.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <Package className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No products found</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              {searchTerm || categoryFilter !== 'all' || scopeFilter !== 'all' || storeFilter !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Get started by adding your first product'}
+            </p>
+            <Button onClick={() => setIsAddModalOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
         </CardContent>
       </Card>
+      )}
       
       {/* Modals */}
       <AddProductModal
@@ -508,45 +563,50 @@ export default function ProductsPage() {
       <CategoriesModal
         isOpen={isCategoriesModalOpen}
         onClose={() => setIsCategoriesModalOpen(false)}
-        onSuccess={handleAddProductSuccess}
+        onSuccess={() => {
+          setIsCategoriesModalOpen(false);
+          fetchCategories();
+        }}
       />
       
       <ImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onSuccess={handleAddProductSuccess}
+        onSuccess={() => {
+          setIsImportModalOpen(false);
+          fetchProducts();
+        }}
       />
       
+      {selectedProduct && (
       <ProductActionsModal
         isOpen={isActionsModalOpen}
         onClose={handleActionsModalClose}
-        onSuccess={handleAddProductSuccess}
         product={selectedProduct}
-        action={selectedAction}
-      />
+          action={selectedAction!}
+          onSuccess={() => {
+            handleActionsModalClose();
+            fetchProducts();
+          }}
+        />
+      )}
 
-      {/* Image Modal for Enlarged View */}
+      {/* Image Modal */}
       {imageModalOpen && selectedImage && (
-        <div 
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60]"
-          onClick={closeImageModal}
-        >
-          <div 
-            className="relative max-w-4xl max-h-[90vh] p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-[90vh]">
             <Button
               variant="ghost"
               size="sm"
+              className="absolute top-2 right-2 z-10 bg-white"
               onClick={closeImageModal}
-              className="absolute top-2 right-2 z-10 bg-white/20 hover:bg-white/30 text-white"
             >
-              <X className="h-6 w-6" />
+              <X className="w-4 h-4" />
             </Button>
             <img
               src={selectedImage}
-              alt="Enlarged product image"
-              className="max-w-full max-h-full object-contain rounded-lg"
+              alt="Product"
+              className="max-w-full max-h-full object-contain"
             />
           </div>
         </div>

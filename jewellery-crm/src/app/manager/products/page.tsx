@@ -1,15 +1,56 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle } from 'lucide-react';
+import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle, Store, Tag, TrendingUp } from 'lucide-react';
 import { apiService, Product } from '@/lib/api-service';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import InventoryModal from '@/components/products/InventoryModal';
+import StockTransferModal from '@/components/products/StockTransferModal';
+import AddProductModal from '@/components/products/AddProductModal';
+import CategoriesModal from '@/components/products/CategoriesModal';
+import ProductActionsModal from '@/components/products/ProductActionsModal';
+
+interface Category {
+  id: number;
+  name: string;
+  description?: string;
+  product_count?: number;
+  store?: number;
+  store_name?: string;
+  scope: 'global' | 'store';
+}
+
+interface ProductInventory {
+  id: number;
+  product: number;
+  product_name?: string;
+  product_sku?: string;
+  store: number;
+  store_name?: string;
+  quantity: number;
+  reserved_quantity: number;
+  reorder_point: number;
+  max_stock: number;
+  location?: string;
+  last_updated: string;
+  available_quantity?: number;
+  is_low_stock?: boolean;
+  is_out_of_stock?: boolean;
+}
 
 export default function ManagerProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [inventory, setInventory] = useState<ProductInventory[]>([]);
   const [stats, setStats] = useState<any>({
     total_products: 0,
     active_products: 0,
@@ -23,19 +64,32 @@ export default function ManagerProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'store'>('all');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [isStockTransferModalOpen, setIsStockTransferModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedAction, setSelectedAction] = useState<'view' | 'edit' | 'delete' | null>(null);
+  const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [searchTerm, categoryFilter, statusFilter, scopeFilter]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       
-      // Fetch products
-      const productsResponse = await apiService.getProducts();
+      // Fetch products with scope filter
+      const productsResponse = await apiService.getProducts({
+        search: searchTerm || undefined,
+        category: categoryFilter === 'all' ? undefined : categoryFilter,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        scope: scopeFilter === 'all' ? undefined : scopeFilter,
+      });
+      
       if (productsResponse.success && productsResponse.data) {
-        // Handle paginated response
         let productsData: Product[] = [];
         if (Array.isArray(productsResponse.data)) {
           productsData = productsResponse.data;
@@ -54,6 +108,43 @@ export default function ManagerProductsPage() {
         setProducts([]);
       }
 
+      // Fetch categories
+      const categoriesResponse = await apiService.getCategories({
+        scope: scopeFilter === 'all' ? undefined : scopeFilter,
+      });
+      
+      if (categoriesResponse.success && categoriesResponse.data) {
+        let categoriesData: Category[] = [];
+        if (Array.isArray(categoriesResponse.data)) {
+          categoriesData = categoriesResponse.data;
+        } else if (typeof categoriesResponse.data === 'object' && categoriesResponse.data !== null) {
+          const data = categoriesResponse.data as any;
+          if (data.results && Array.isArray(data.results)) {
+            categoriesData = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            categoriesData = data.data;
+          }
+        }
+        setCategories(categoriesData);
+      }
+
+      // Fetch inventory
+      const inventoryResponse = await apiService.getInventory();
+      if (inventoryResponse.success && inventoryResponse.data) {
+        let inventoryData: ProductInventory[] = [];
+        if (Array.isArray(inventoryResponse.data)) {
+          inventoryData = inventoryResponse.data;
+        } else if (typeof inventoryResponse.data === 'object' && inventoryResponse.data !== null) {
+          const data = inventoryResponse.data as any;
+          if (data.results && Array.isArray(data.results)) {
+            inventoryData = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            inventoryData = data.data;
+          }
+        }
+        setInventory(inventoryData);
+      }
+
       // Fetch stats
       const statsResponse = await apiService.getProductStats();
       if (statsResponse.success && statsResponse.data) {
@@ -62,6 +153,8 @@ export default function ManagerProductsPage() {
     } catch (error) {
       console.error('Error fetching data:', error);
       setProducts([]);
+      setCategories([]);
+      setInventory([]);
     } finally {
       setLoading(false);
     }
@@ -71,10 +164,11 @@ export default function ManagerProductsPage() {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || product.category_name === categoryFilter;
+    const matchesCategory = categoryFilter === 'all' || product.category?.toString() === categoryFilter;
     const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
+    const matchesScope = scopeFilter === 'all' || product.scope === scopeFilter;
     
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesCategory && matchesStatus && matchesScope;
   }) : [];
 
   const getStockStatus = (product: Product) => {
@@ -89,169 +183,344 @@ export default function ManagerProductsPage() {
     return <Package className="w-4 h-4 text-green-500" />;
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const getScopeIcon = (scope: string) => {
+    return scope === 'global' ? <TrendingUp className="w-4 h-4" /> : <Store className="w-4 h-4" />;
+  };
+
+  const getScopeLabel = (scope: string) => {
+    return scope === 'global' ? 'Global' : 'Store';
+  };
+
+  const getScopeBadgeVariant = (scope: string) => {
+    return scope === 'global' ? 'default' : 'secondary';
+  };
+
+  const handleProductAction = (product: Product, action: 'view' | 'edit' | 'delete') => {
+    setSelectedProduct(product);
+    setSelectedAction(action);
+    setIsActionsModalOpen(true);
+  };
+
+  const handleActionsModalClose = () => {
+    setIsActionsModalOpen(false);
+    setSelectedProduct(null);
+    setSelectedAction(null);
+  };
+
   const statsCards = [
     { 
       label: 'Total Products', 
       value: stats.total_products || 0,
-      sub: 'All products in inventory'
+      sub: 'All products in inventory',
+      icon: Package
     },
     { 
       label: 'Low Stock', 
       value: stats.low_stock || 0,
-      sub: 'Products below minimum stock'
+      sub: 'Products below minimum',
+      icon: AlertTriangle
     },
     { 
-      label: 'Out of Stock', 
-      value: stats.out_of_stock || 0,
-      sub: 'Products with zero stock'
+      label: 'Categories', 
+      value: categories.length,
+      sub: 'Product categories',
+      icon: Tag
     },
     { 
-      label: 'Inventory Value', 
-      value: `₹${((stats.total_value || 0) / 100000).toFixed(1)}L`,
-      sub: 'Total inventory value'
+      label: 'Total Value', 
+      value: formatCurrency(stats.total_value || 0),
+      sub: 'Inventory value',
+      icon: IndianRupee
     },
   ];
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-semibold text-text-primary">Products</h1>
-          <p className="text-text-secondary mt-1">Manage your product inventory</p>
+          <h1 className="text-3xl font-bold tracking-tight">Store Products</h1>
+          <p className="text-muted-foreground">
+            Manage your store's product catalog and inventory
+          </p>
         </div>
-        <div className="flex gap-2 items-center">
-          <Button className="btn-primary text-sm flex items-center gap-1">
-            <Plus className="w-4 h-4" /> Add Product
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsCategoriesModalOpen(true)}>
+            <Tag className="w-4 h-4 mr-2" />
+            Categories
           </Button>
-          <Button variant="outline" size="sm">Import CSV</Button>
+          <Button variant="outline" onClick={() => setIsInventoryModalOpen(true)}>
+            <Package className="w-4 h-4 mr-2" />
+            Inventory
+          </Button>
+          <Button variant="outline" onClick={() => setIsStockTransferModalOpen(true)}>
+            <Package className="w-4 h-4 mr-2" />
+            Transfers
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Product
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statsCards.map((stat) => (
-          <Card key={stat.label} className="flex flex-col gap-1 p-5">
-            <div className="text-xl font-bold text-text-primary">{stat.value}</div>
-            <div className="text-sm text-text-secondary font-medium">{stat.label}</div>
-            <div className="text-xs text-text-muted mt-1">{stat.sub}</div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {statsCards.map((stat, index) => (
+          <Card key={index}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground">{stat.sub}</p>
+                </div>
+                <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                  <stat.icon className="w-4 h-4 text-primary" />
+                </div>
+              </div>
+            </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
           <Input 
-            placeholder="Search by name, SKU, or description..." 
-            className="w-full md:w-80"
+                placeholder="Search products..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <div className="flex gap-2">
+            </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="All Categories" />
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Gold">Gold</SelectItem>
-                <SelectItem value="Diamond">Diamond</SelectItem>
-                <SelectItem value="Silver">Silver</SelectItem>
-                <SelectItem value="Platinum">Platinum</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id.toString()}>
+                    {category.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="All Status" />
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={scopeFilter} onValueChange={(value: 'all' | 'global' | 'store') => setScopeFilter(value)}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Scope" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Scopes</SelectItem>
+                <SelectItem value="global">Global</SelectItem>
+                <SelectItem value="store">Store</SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Product</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">SKU</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Category</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Price</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Stock</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Status</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
-                    No products found.
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map((product) => {
-                  const stockStatus = getStockStatus(product);
-                  return (
-                    <tr key={product.id} className="border-t border-border hover:bg-gray-50">
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-text-primary">{product.name}</div>
-                        <div className="text-xs text-text-muted">{product.description}</div>
-                      </td>
-                      <td className="px-4 py-2 text-text-primary">{product.sku}</td>
-                      <td className="px-4 py-2 text-text-primary">{product.category_name}</td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center text-text-primary">
-                          <IndianRupee className="w-3 h-3 mr-1" />
-                          {product.selling_price.toLocaleString()}
-                        </div>
-                        {product.discount_price && (
-                          <div className="text-xs text-text-muted line-through">
-                            ₹{product.discount_price.toLocaleString()}
+      {/* Products Grid */}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading products...</p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredProducts.map((product) => (
+            <Card key={product.id} className="overflow-hidden">
+              <div className="relative">
+                {product.main_image_url ? (
+                  <img
+                    src={product.main_image_url}
+                    alt={product.name}
+                    className="w-full h-48 object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-muted flex items-center justify-center">
+                    <Package className="w-12 h-12 text-muted-foreground" />
                           </div>
                         )}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
+                
+                {/* Scope Badge */}
+                <div className="absolute top-2 left-2">
+                  <Badge variant={getScopeBadgeVariant(product.scope)} className="text-xs">
+                    {getScopeIcon(product.scope)}
+                    <span className="ml-1">{getScopeLabel(product.scope)}</span>
+                  </Badge>
+                </div>
+
+                {/* Stock Status */}
+                <div className="absolute top-2 right-2">
+                  <Badge variant={getStockStatus(product).variant}>
                           {getStockIcon(product)}
-                          <span className="text-text-primary">{product.quantity}</span>
+                    <span className="ml-1">{getStockStatus(product).status}</span>
+                  </Badge>
+                </div>
+              </div>
+
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-lg truncate" title={product.name}>
+                    {product.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
+                  
+                  {product.category_name && (
+                    <p className="text-sm text-muted-foreground">
+                      Category: {product.category_name}
+                    </p>
+                  )}
+
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-lg font-bold">
+                        {formatCurrency(product.current_price || product.selling_price)}
+                      </p>
+                      {product.discount_price && product.discount_price !== product.selling_price && (
+                        <p className="text-sm text-muted-foreground line-through">
+                          {formatCurrency(product.selling_price)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">
+                        Stock: {product.quantity}
+                      </p>
+                      {product.is_low_stock && (
+                        <p className="text-xs text-yellow-600">Low Stock</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2">
+                    <div className="flex gap-1">
+                      {product.is_featured && (
+                        <Badge variant="secondary" className="text-xs">Featured</Badge>
+                      )}
+                      {product.is_bestseller && (
+                        <Badge variant="secondary" className="text-xs">Best Seller</Badge>
+                      )}
                         </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <Badge variant={stockStatus.variant} className="capitalize text-xs">
-                          {stockStatus.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 flex gap-2">
-                        <Button variant="ghost" size="icon">
-                          <Eye className="w-4 h-4" />
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Package className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleProductAction(product, 'view')}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleProductAction(product, 'edit')}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleProductAction(product, 'delete')}>
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
+      )}
+
+      {!loading && filteredProducts.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center h-64">
+            <Package className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No products found</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              {searchTerm || categoryFilter !== 'all' || statusFilter !== 'all' || scopeFilter !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Get started by adding your first product'}
+            </p>
+            <Button onClick={() => setIsAddModalOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
+          </CardContent>
       </Card>
+      )}
+
+      {/* Modals */}
+      <AddProductModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => {
+          setIsAddModalOpen(false);
+          fetchData();
+        }}
+      />
+      <CategoriesModal
+        isOpen={isCategoriesModalOpen}
+        onClose={() => setIsCategoriesModalOpen(false)}
+        onSuccess={() => {
+          setIsCategoriesModalOpen(false);
+          fetchData();
+        }}
+      />
+      <InventoryModal
+        isOpen={isInventoryModalOpen}
+        onClose={() => setIsInventoryModalOpen(false)}
+        onSuccess={() => {
+          setIsInventoryModalOpen(false);
+          fetchData();
+        }}
+      />
+      <StockTransferModal
+        isOpen={isStockTransferModalOpen}
+        onClose={() => setIsStockTransferModalOpen(false)}
+        onSuccess={() => {
+          setIsStockTransferModalOpen(false);
+          fetchData();
+        }}
+      />
+
+      {selectedProduct && (
+        <ProductActionsModal
+          isOpen={isActionsModalOpen}
+          onClose={handleActionsModalClose}
+          product={selectedProduct}
+          action={selectedAction!}
+          onSuccess={() => {
+            handleActionsModalClose();
+            fetchData();
+          }}
+        />
+      )}
     </div>
   );
 } 

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 
 
 class Category(models.Model):
@@ -23,6 +24,27 @@ class Category(models.Model):
         related_name='categories'
     )
     
+    # Store relationship for store-specific categories
+    store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='categories'
+    )
+    
+    # Scope: global (business admin) or store (store manager)
+    SCOPE_CHOICES = [
+        ('global', 'Global'),
+        ('store', 'Store')
+    ]
+    scope = models.CharField(
+        max_length=10,
+        choices=SCOPE_CHOICES,
+        default='store',
+        help_text=_('Global categories are visible to all stores, Store categories are store-specific')
+    )
+    
     # Metadata
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -32,10 +54,11 @@ class Category(models.Model):
         verbose_name = _('Category')
         verbose_name_plural = _('Categories')
         ordering = ['name']
-        unique_together = ['name', 'tenant']
+        unique_together = ['name', 'tenant', 'store']
 
     def __str__(self):
-        return self.name
+        store_info = f" ({self.store.name})" if self.store else ""
+        return f"{self.name}{store_info}"
 
     @property
     def full_name(self):
@@ -74,7 +97,7 @@ class Product(models.Model):
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, help_text=_('Selling price'))
     discount_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     
-    # Inventory
+    # Inventory (keeping for backward compatibility, will be replaced by ProductInventory)
     quantity = models.PositiveIntegerField(default=0)
     min_quantity = models.PositiveIntegerField(default=0, help_text=_('Minimum stock level'))
     max_quantity = models.PositiveIntegerField(default=1000, help_text=_('Maximum stock level'))
@@ -111,6 +134,27 @@ class Product(models.Model):
         related_name='products'
     )
     
+    # Store relationship for store-specific products
+    store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='products'
+    )
+    
+    # Scope: global (business admin) or store (store manager)
+    SCOPE_CHOICES = [
+        ('global', 'Global'),
+        ('store', 'Store')
+    ]
+    scope = models.CharField(
+        max_length=10,
+        choices=SCOPE_CHOICES,
+        default='store',
+        help_text=_('Global products are visible to all stores, Store products are store-specific')
+    )
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -119,10 +163,11 @@ class Product(models.Model):
         verbose_name = _('Product')
         verbose_name_plural = _('Products')
         ordering = ['-created_at']
-        unique_together = ['sku', 'tenant']
+        unique_together = ['sku', 'tenant', 'store']
 
     def __str__(self):
-        return f"{self.name} ({self.sku})"
+        store_info = f" ({self.store.name})" if self.store else ""
+        return f"{self.name} ({self.sku}){store_info}"
 
     @property
     def is_in_stock(self):
@@ -155,6 +200,150 @@ class Product(models.Model):
         elif self.status == self.Status.OUT_OF_STOCK and self.quantity > 0:
             self.status = self.Status.ACTIVE
         
+        self.save()
+
+
+class ProductInventory(models.Model):
+    """
+    Store-specific inventory tracking for products.
+    """
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='inventory'
+    )
+    store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.CASCADE,
+        related_name='inventory'
+    )
+    quantity = models.PositiveIntegerField(default=0)
+    reserved_quantity = models.PositiveIntegerField(default=0, help_text=_('Items reserved for pending orders'))
+    reorder_point = models.PositiveIntegerField(default=0, help_text=_('Stock level at which to reorder'))
+    max_stock = models.PositiveIntegerField(default=1000, help_text=_('Maximum stock level'))
+    location = models.CharField(max_length=100, blank=True, null=True, help_text=_('Specific location within store'))
+    last_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('Product Inventory')
+        verbose_name_plural = _('Product Inventories')
+        unique_together = ('product', 'store')
+        ordering = ['-last_updated']
+
+    def __str__(self):
+        return f"{self.product.name} - {self.store.name} ({self.quantity})"
+
+    @property
+    def available_quantity(self):
+        """Available quantity (total - reserved)"""
+        return max(0, self.quantity - self.reserved_quantity)
+
+    @property
+    def is_low_stock(self):
+        """Check if stock is below reorder point"""
+        return self.quantity <= self.reorder_point
+
+    @property
+    def is_out_of_stock(self):
+        """Check if product is out of stock"""
+        return self.quantity == 0
+
+
+class StockTransfer(models.Model):
+    """
+    Inter-store stock transfer model.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled')
+    ]
+
+    from_store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.CASCADE,
+        related_name='outgoing_transfers'
+    )
+    to_store = models.ForeignKey(
+        'stores.Store',
+        on_delete=models.CASCADE,
+        related_name='incoming_transfers'
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='transfers'
+    )
+    quantity = models.PositiveIntegerField()
+    reason = models.TextField(help_text=_('Reason for transfer'))
+    requested_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.CASCADE,
+        related_name='transfer_requests'
+    )
+    approved_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.CASCADE,
+        related_name='transfer_approvals',
+        null=True,
+        blank=True
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+    transfer_date = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('Stock Transfer')
+        verbose_name_plural = _('Stock Transfers')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.product.name} - {self.from_store.name} to {self.to_store.name} ({self.quantity})"
+
+    def approve(self, approved_by_user):
+        """Approve the transfer"""
+        self.status = 'approved'
+        self.approved_by = approved_by_user
+        self.save()
+
+    def complete(self):
+        """Complete the transfer"""
+        # Update inventory
+        from_inventory, created = ProductInventory.objects.get_or_create(
+            product=self.product,
+            store=self.from_store,
+            defaults={'quantity': 0}
+        )
+        to_inventory, created = ProductInventory.objects.get_or_create(
+            product=self.product,
+            store=self.to_store,
+            defaults={'quantity': 0}
+        )
+
+        # Transfer the stock
+        if from_inventory.quantity >= self.quantity:
+            from_inventory.quantity -= self.quantity
+            to_inventory.quantity += self.quantity
+            from_inventory.save()
+            to_inventory.save()
+            
+            self.status = 'completed'
+            self.transfer_date = timezone.now()
+            self.save()
+            return True
+        else:
+            return False
+
+    def cancel(self):
+        """Cancel the transfer"""
+        self.status = 'cancelled'
         self.save()
 
 

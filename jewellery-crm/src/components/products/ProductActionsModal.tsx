@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { apiService } from '@/lib/api-service';
+import { useAuth } from '@/hooks/useAuth';
 import { Loader2, X, Edit, Trash2, Eye, Copy, Archive } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
@@ -54,6 +55,7 @@ export default function ProductActionsModal({
   product, 
   action 
 }: ProductActionsModalProps) {
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState<ProductFormData>({
     name: '',
@@ -120,7 +122,7 @@ export default function ProductActionsModal({
 
   const fetchCategories = async () => {
     try {
-      const response = await apiService.getProductCategories();
+      const response = await apiService.getCategories();
       if (response.success) {
         const data = response.data as any;
         setCategories(Array.isArray(data) ? data : data.results || []);
@@ -168,9 +170,19 @@ export default function ProductActionsModal({
       }
 
       // Add additional images if changed
-      additionalImages.forEach((image, index) => {
-        formDataToSend.append('additional_images', image);
-      });
+      if (additionalImages.length > 0) {
+        additionalImages.forEach((image, index) => {
+          formDataToSend.append('additional_images', image);
+        });
+      }
+
+      // Add store from current user or preserve existing store
+      if (user?.store) {
+        formDataToSend.append('store', user.store.toString());
+      } else if (product.store) {
+        // If user doesn't have a store, preserve the product's existing store
+        formDataToSend.append('store', product.store.toString());
+      }
 
       const response = await apiService.updateProduct(product.id.toString(), formDataToSend);
       if (response.success) {

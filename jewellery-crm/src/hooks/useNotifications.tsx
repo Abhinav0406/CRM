@@ -180,37 +180,30 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
   // Fetch notifications from API
   const fetchNotifications = useCallback(async () => {
-    console.log('🔍 fetchNotifications called with:', { user, isAuthenticated, isHydrated });
-    
     if (!user || !isAuthenticated || !isHydrated) {
-      console.log('❌ fetchNotifications: User not authenticated or not hydrated');
       return;
     }
 
     try {
-      console.log('✅ fetchNotifications: Starting API call');
       dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_ERROR', payload: null });
 
       // Call the actual API to get notifications
       const response = await apiService.getNotifications();
-      console.log('📡 API Response:', response);
       
       if (response.success && response.data) {
         // Extract the results array from the paginated response
         const notifications = Array.isArray(response.data) ? response.data : (response.data as any).results || [];
-        console.log('✅ fetchNotifications: Success, setting notifications:', notifications);
         dispatch({ type: 'SET_NOTIFICATIONS', payload: notifications });
       } else {
         // If no data or error, set empty array
-        console.log('⚠️ fetchNotifications: No data or error, setting empty array');
         dispatch({ type: 'SET_NOTIFICATIONS', payload: [] });
         if (!response.success) {
           dispatch({ type: 'SET_ERROR', payload: response.message || 'Failed to fetch notifications' });
         }
       }
     } catch (error) {
-      console.error('❌ Error fetching notifications:', error);
+      console.error('Error fetching notifications:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to fetch notifications' });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });

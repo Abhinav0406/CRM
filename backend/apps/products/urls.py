@@ -34,6 +34,21 @@ urlpatterns = [
     path('variants/<int:pk>/update/', views.ProductVariantUpdateView.as_view(), name='product-variant-update'),
     path('variants/<int:pk>/delete/', views.ProductVariantDeleteView.as_view(), name='product-variant-delete'),
     
+    # Inventory URLs
+    path('inventory/', views.ProductInventoryListView.as_view(), name='inventory-list'),
+    path('inventory/<int:pk>/update/', views.ProductInventoryUpdateView.as_view(), name='inventory-update'),
+    
+    # Stock Transfer URLs
+    path('transfers/', views.StockTransferListView.as_view(), name='transfer-list'),
+    path('transfers/create/', views.StockTransferCreateView.as_view(), name='transfer-create'),
+    path('transfers/<int:pk>/', views.StockTransferDetailView.as_view(), name='transfer-detail'),
+    path('transfers/<int:pk>/approve/', views.StockTransferApproveView.as_view(), name='transfer-approve'),
+    path('transfers/<int:pk>/complete/', views.StockTransferCompleteView.as_view(), name='transfer-complete'),
+    path('transfers/<int:pk>/cancel/', views.StockTransferCancelView.as_view(), name='transfer-cancel'),
+    
+    # Global Catalogue (Business Admin only)
+    path('global-catalogue/', views.GlobalCatalogueView.as_view(), name='global-catalogue'),
+    
     # Stats
     path('stats/', views.ProductStatsView.as_view(), name='product-stats'),
     
