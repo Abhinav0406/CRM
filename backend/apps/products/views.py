@@ -1,6 +1,6 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -14,6 +14,7 @@ from decimal import Decimal
 from .models import Product, Category, ProductVariant
 from .serializers import ProductSerializer, ProductListSerializer, ProductDetailSerializer, CategorySerializer, ProductVariantSerializer
 from apps.users.permissions import IsRoleAllowed
+from apps.tenants.models import Tenant
 
 
 class CustomProductPagination(PageNumberPagination):
@@ -275,6 +276,109 @@ class ProductsByCategoryView(generics.ListAPIView):
         return Product.objects.filter(
             tenant=self.request.user.tenant,
             category_id=category_id
+        ).order_by('-created_at')
+
+
+class PublicProductListView(generics.ListAPIView):
+    """Public endpoint for viewing products by tenant/store slug"""
+    serializer_class = ProductListSerializer
+    permission_classes = [AllowAny]
+    pagination_class = CustomProductPagination
+    
+    def get_queryset(self):
+        # Get tenant/store slug from URL parameter
+        tenant_slug = self.kwargs.get('tenant_code')
+        if not tenant_slug:
+            return Product.objects.none()
+        
+        # Find tenant by slug
+        try:
+            tenant = Tenant.objects.get(slug=tenant_slug)
+        except Tenant.DoesNotExist:
+            return Product.objects.none()
+        
+        queryset = Product.objects.filter(tenant=tenant, status='active')
+        
+        # Filter by category
+        category_id = self.request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        
+        # Search by name or SKU
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(sku__icontains=search)
+            )
+        
+        return queryset.order_by('-created_at')
+
+
+class PublicCategoryListView(generics.ListAPIView):
+    """Public endpoint for viewing categories by tenant/store slug"""
+    serializer_class = CategorySerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+    
+    def get_queryset(self):
+        # Get tenant/store slug from URL parameter
+        tenant_slug = self.kwargs.get('tenant_code')
+        if not tenant_slug:
+            return Category.objects.none()
+        
+        # Find tenant by slug
+        try:
+            tenant = Tenant.objects.get(slug=tenant_slug)
+        except Tenant.DoesNotExist:
+            return Category.objects.none()
+        
+        return Category.objects.filter(tenant=tenant, is_active=True)
+
+
+class PublicProductDetailView(generics.RetrieveAPIView):
+    """Public endpoint for viewing a specific product by tenant/store slug"""
+    serializer_class = ProductDetailSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        # Get tenant/store slug from URL parameter
+        tenant_slug = self.kwargs.get('tenant_code')
+        if not tenant_slug:
+            return Product.objects.none()
+        
+        # Find tenant by slug
+        try:
+            tenant = Tenant.objects.get(slug=tenant_slug)
+        except Tenant.DoesNotExist:
+            return Product.objects.none()
+        
+        return Product.objects.filter(tenant=tenant, status='active')
+
+
+class PublicProductsByCategoryView(generics.ListAPIView):
+    """Public endpoint for viewing products by category and tenant/store slug"""
+    serializer_class = ProductListSerializer
+    permission_classes = [AllowAny]
+    pagination_class = None
+    
+    def get_queryset(self):
+        # Get tenant/store slug and category ID from URL parameters
+        tenant_slug = self.kwargs.get('tenant_code')
+        category_id = self.kwargs.get('category_id')
+        
+        if not tenant_slug or not category_id:
+            return Product.objects.none()
+        
+        # Find tenant by slug
+        try:
+            tenant = Tenant.objects.get(slug=tenant_slug)
+        except Tenant.DoesNotExist:
+            return Product.objects.none()
+        
+        return Product.objects.filter(
+            tenant=tenant,
+            category_id=category_id,
+            status='active'
         ).order_by('-created_at')
 
 

@@ -657,6 +657,27 @@ class ApiService {
     return this.request('/products/categories/');
   }
 
+  // Tenant-specific methods for customer stores
+  async getTenantProducts(tenantId: string, params?: {
+    page?: number;
+    category?: string;
+    search?: string;
+    status?: string;
+  }): Promise<ApiResponse<Product[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.status) queryParams.append('status', params.status);
+    queryParams.append('page_size', '200');
+
+    return this.request(`/products/public/${tenantId}/products/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  async getTenantCategories(tenantId: string): Promise<ApiResponse<Category[]>> {
+    return this.request(`/products/public/${tenantId}/categories/`);
+  }
+
   async getProductStats(): Promise<ApiResponse<any>> {
     return this.request('/products/stats/');
   }
@@ -1405,4 +1426,5 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
+export { ApiService };
 export type { User, Client, Product, Sale, SalesPipeline, Appointment, Category, DashboardStats, Store, SupportTicket }; 

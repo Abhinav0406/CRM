@@ -42,6 +42,8 @@ module.exports = {
         'chart-3': 'hsl(var(--chart-3))',
         'chart-4': 'hsl(var(--chart-4))',
         'chart-5': 'hsl(var(--chart-5))',
+        // Gold color for jewellery theme
+        'gold': 'hsl(var(--gold))',
       },
       fontFamily: {
         sans: ['var(--font-lexend)', 'Lexend', 'Avenir Next', 'system-ui', 'sans-serif'],

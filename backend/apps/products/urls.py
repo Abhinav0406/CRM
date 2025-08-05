@@ -4,6 +4,12 @@ from . import views
 app_name = 'products'
 
 urlpatterns = [
+    # Public Store URLs (no authentication required)
+    path('public/<str:tenant_code>/products/', views.PublicProductListView.as_view(), name='public-product-list'),
+    path('public/<str:tenant_code>/categories/', views.PublicCategoryListView.as_view(), name='public-category-list'),
+    path('public/<str:tenant_code>/products/<int:pk>/', views.PublicProductDetailView.as_view(), name='public-product-detail'),
+    path('public/<str:tenant_code>/categories/<int:category_id>/products/', views.PublicProductsByCategoryView.as_view(), name='public-products-by-category'),
+    
     # Product URLs
     path('list/', views.ProductListView.as_view(), name='product-list'),
     path('create/', views.ProductCreateView.as_view(), name='product-create'),
