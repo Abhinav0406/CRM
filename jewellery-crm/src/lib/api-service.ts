@@ -1292,6 +1292,116 @@ class ApiService {
 
     return this.request(`/escalation/my-escalations/${queryParams.toString() ? `?${queryParams}` : ''}`);
   }
+
+  // ================================
+  // NOTIFICATION API ENDPOINTS
+  // ================================
+
+  // Get user notifications
+  async getNotifications(params?: {
+    page?: number;
+    status?: string;
+    type?: string;
+    priority?: string;
+  }): Promise<ApiResponse<any[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.type) queryParams.append('type', params.type);
+    if (params?.priority) queryParams.append('priority', params.priority);
+
+    return this.request(`/notifications/notifications/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  // Mark notification as read
+  async markNotificationAsRead(notificationId: string): Promise<ApiResponse<any>> {
+    return this.request(`/notifications/notifications/${notificationId}/mark_as_read/`, {
+      method: 'POST',
+    });
+  }
+
+  // Mark all notifications as read
+  async markAllNotificationsAsRead(): Promise<ApiResponse<any>> {
+    return this.request('/notifications/notifications/mark_all_as_read/', {
+      method: 'POST',
+    });
+  }
+
+  // Delete notification
+  async deleteNotification(notificationId: string): Promise<ApiResponse<void>> {
+    return this.request(`/notifications/notifications/${notificationId}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Create notification
+  async createNotification(notificationData: any): Promise<ApiResponse<any>> {
+    return this.request('/notifications/notifications/', {
+      method: 'POST',
+      body: JSON.stringify(notificationData),
+    });
+  }
+
+  // Get notification settings
+  async getNotificationSettings(): Promise<ApiResponse<any>> {
+    return this.request('/notifications/settings/');
+  }
+
+  // Update notification settings
+  async updateNotificationSettings(settings: any): Promise<ApiResponse<any>> {
+    return this.request('/notifications/settings/', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  // Get notification templates
+  async getNotificationTemplates(): Promise<ApiResponse<any[]>> {
+    return this.request('/notifications/templates/');
+  }
+
+  // Create notification template
+  async createNotificationTemplate(templateData: any): Promise<ApiResponse<any>> {
+    return this.request('/notifications/templates/', {
+      method: 'POST',
+      body: JSON.stringify(templateData),
+    });
+  }
+
+  // Update notification template
+  async updateNotificationTemplate(templateId: string, templateData: any): Promise<ApiResponse<any>> {
+    return this.request(`/notifications/templates/${templateId}/`, {
+      method: 'PUT',
+      body: JSON.stringify(templateData),
+    });
+  }
+
+  // Delete notification template
+  async deleteNotificationTemplate(templateId: string): Promise<ApiResponse<void>> {
+    return this.request(`/notifications/templates/${templateId}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Get notification statistics
+  async getNotificationStats(): Promise<ApiResponse<any>> {
+    return this.request('/notifications/stats/');
+  }
+
+  // Subscribe to push notifications
+  async subscribeToPushNotifications(subscriptionData: any): Promise<ApiResponse<any>> {
+    return this.request('/notifications/push/subscribe/', {
+      method: 'POST',
+      body: JSON.stringify(subscriptionData),
+    });
+  }
+
+  // Unsubscribe from push notifications
+  async unsubscribeFromPushNotifications(): Promise<ApiResponse<any>> {
+    return this.request('/notifications/push/unsubscribe/', {
+      method: 'POST',
+    });
+  }
 }
 
 export const apiService = new ApiService();

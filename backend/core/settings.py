@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.announcements',
     'apps.marketing',
     'apps.support',
+    'apps.notifications',
     'telecalling',
 ]
 

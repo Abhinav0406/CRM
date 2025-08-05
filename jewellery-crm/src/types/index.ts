@@ -623,4 +623,158 @@ export interface FormState<T> {
   isValid: boolean;
 }
 
+// ================================
+// NOTIFICATION SYSTEM TYPES
+// ================================
+
+/**
+ * Notification types for different system events
+ */
+export type NotificationType = 
+  | 'appointment_reminder'
+  | 'deal_update'
+  | 'new_customer'
+  | 'order_status'
+  | 'inventory_alert'
+  | 'task_due'
+  | 'announcement'
+  | 'escalation'
+  | 'system_alert'
+  | 'marketing_campaign'
+  | 'follow_up_reminder'
+  | 'payment_received'
+  | 'low_stock'
+  | 'high_demand'
+  | 'custom';
+
+/**
+ * Notification priority levels
+ */
+export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+/**
+ * Notification status
+ */
+export type NotificationStatus = 'unread' | 'read' | 'archived';
+
+/**
+ * Notification interface
+ */
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority: NotificationPriority;
+  status: NotificationStatus;
+  
+  // Related data
+  relatedId?: string; // ID of related entity (deal, appointment, etc.)
+  relatedType?: string; // Type of related entity
+  
+  // User and tenant info
+  userId: string;
+  tenantId: string;
+  storeId?: string; // Store ID for store-specific notifications
+  
+  // Timing
+  createdAt: Date;
+  readAt?: Date;
+  expiresAt?: Date;
+  
+  // Action data
+  actionUrl?: string;
+  actionText?: string;
+  
+  // Metadata
+  metadata?: Record<string, any>;
+  isPersistent: boolean; // Whether notification should persist until manually dismissed
+}
+
+/**
+ * Notification settings for user preferences
+ */
+export interface NotificationSettings {
+  userId: string;
+  tenantId: string;
+  
+  // Email notifications
+  emailNotifications: {
+    enabled: boolean;
+    types: NotificationType[];
+    frequency: 'immediate' | 'daily' | 'weekly';
+  };
+  
+  // Push notifications
+  pushNotifications: {
+    enabled: boolean;
+    types: NotificationType[];
+  };
+  
+  // In-app notifications
+  inAppNotifications: {
+    enabled: boolean;
+    types: NotificationType[];
+    sound: boolean;
+    desktop: boolean;
+  };
+  
+  // Quiet hours
+  quietHours: {
+    enabled: boolean;
+    startTime: string; // HH:mm format
+    endTime: string; // HH:mm format
+    timezone: string;
+  };
+  
+  // Custom preferences
+  preferences: {
+    appointmentReminders: boolean;
+    dealUpdates: boolean;
+    orderNotifications: boolean;
+    inventoryAlerts: boolean;
+    taskReminders: boolean;
+    announcements: boolean;
+    escalations: boolean;
+    marketingUpdates: boolean;
+  };
+}
+
+/**
+ * Notification template for system-generated notifications
+ */
+export interface NotificationTemplate {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  priority: NotificationPriority;
+  
+  // Template variables
+  variables: string[];
+  
+  // Default settings
+  defaultSettings: {
+    isPersistent: boolean;
+    expiresIn?: number; // seconds
+    actionUrl?: string;
+    actionText?: string;
+  };
+  
+  // Metadata
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Notification batch for bulk operations
+ */
+export interface NotificationBatch {
+  notifications: Notification[];
+  totalCount: number;
+  unreadCount: number;
+  hasMore: boolean;
+}
+
 // All types are already exported above as individual exports

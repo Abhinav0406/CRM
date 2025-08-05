@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/automation/', include('apps.automation.urls')),
     path('api/marketing/', include('apps.marketing.urls')),
     path('api/support/', include('apps.support.urls')),
+    path('api/notifications/', include('apps.notifications.urls')),
 ]
 
 # Serve static and media files in development

@@ -214,7 +214,65 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
         
         # Set audit log user for tracking
         instance._auditlog_user = user
+        
+        # Create notifications for new customer
+        self.create_customer_notifications(instance, user)
+        
         return instance
+    
+    def create_customer_notifications(self, client, created_by_user):
+        """Create notifications when a new customer is added."""
+        try:
+            from apps.notifications.models import Notification
+            from apps.users.models import User
+            
+            # Get all users who should receive notifications
+            users_to_notify = []
+            
+            # The user who created the customer should get notified
+            users_to_notify.append(created_by_user)
+            
+            # Business admin should always get notified
+            if created_by_user.tenant:
+                business_admins = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='business_admin'
+                )
+                users_to_notify.extend(business_admins)
+            
+            # Store manager should get notified if customer is assigned to their store
+            if client.store:
+                store_managers = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='manager',
+                    store=client.store
+                )
+                users_to_notify.extend(store_managers)
+            
+            # Remove duplicates (in case created_by_user is also a business_admin or manager)
+            unique_users = list({user.id: user for user in users_to_notify}.values())
+            
+            # Create notifications for each user
+            for user in unique_users:
+                Notification.objects.create(
+                    user=user,
+                    tenant=client.tenant,
+                    store=client.store,
+                    type='new_customer',
+                    title='New customer registered',
+                    message=f'{client.first_name} {client.last_name} has been registered as a new customer by {created_by_user.first_name or created_by_user.username}',
+                    priority='medium',
+                    status='unread',
+                    action_url=f'/customers/{client.id}',
+                    action_text='View Customer',
+                    is_persistent=False
+                )
+            
+            print(f"Created {len(unique_users)} notifications for new customer {client.first_name} {client.last_name}")
+            
+        except Exception as e:
+            print(f"Error creating notifications for new customer: {e}")
+            # Don't fail the customer creation if notification creation fails
 
     def update(self, request, *args, **kwargs):
         print(f"=== CLIENT VIEW UPDATE METHOD ===")
@@ -913,7 +971,69 @@ class AppointmentViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     def perform_create(self, serializer):
         user = self.request.user
         tenant = user.tenant
-        serializer.save(tenant=tenant, created_by=user, assigned_to=user)
+        appointment = serializer.save(tenant=tenant, created_by=user, assigned_to=user)
+        
+        # Create notification for appointment creation
+        self.create_appointment_notification(appointment, user)
+        
+        return appointment
+    
+    def create_appointment_notification(self, appointment, created_by_user):
+        """Create notification when a new appointment is created."""
+        try:
+            from apps.notifications.models import Notification
+            from apps.users.models import User
+            
+            # Get users to notify
+            users_to_notify = []
+            
+            # The user who created the appointment should get notified
+            users_to_notify.append(created_by_user)
+            
+            # Notify the assigned user (if different from creator)
+            if appointment.assigned_to and appointment.assigned_to != created_by_user:
+                users_to_notify.append(appointment.assigned_to)
+            
+            # Notify business admin
+            if created_by_user.tenant:
+                business_admins = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='business_admin'
+                )
+                users_to_notify.extend(business_admins)
+            
+            # Notify store manager if appointment is for their store
+            if appointment.client and appointment.client.store:
+                store_managers = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='manager',
+                    store=appointment.client.store
+                )
+                users_to_notify.extend(store_managers)
+            
+            # Remove duplicates
+            unique_users = list({user.id: user for user in users_to_notify}.values())
+            
+            # Create notifications
+            for user in unique_users:
+                Notification.objects.create(
+                    user=user,
+                    tenant=appointment.tenant,
+                    store=appointment.client.store if appointment.client else None,
+                    type='appointment_reminder',
+                    title='New appointment scheduled',
+                    message=f'Appointment scheduled for {appointment.client.first_name} {appointment.client.last_name if appointment.client else "Customer"} on {appointment.date} at {appointment.time}',
+                    priority='medium',
+                    status='unread',
+                    action_url=f'/appointments/{appointment.id}',
+                    action_text='View Appointment',
+                    is_persistent=False
+                )
+            
+            print(f"Created {len(unique_users)} notifications for new appointment")
+            
+        except Exception as e:
+            print(f"Error creating appointment notification: {e}")
 
     def perform_update(self, serializer):
         user = self.request.user

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { apiService } from '@/lib/api-service';
 import { Users, TrendingUp, Package, DollarSign, Calendar, ShoppingBag, Loader2, Target, Store, Award } from 'lucide-react';
+import { NotificationBell } from '@/components/notifications';
 
 interface DashboardData {
   // KPI Metrics
@@ -150,6 +151,7 @@ export default function BusinessAdminDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <Button variant="outline" size="sm">
             <Calendar className="w-4 h-4 mr-2" />
             Last 30 Days
