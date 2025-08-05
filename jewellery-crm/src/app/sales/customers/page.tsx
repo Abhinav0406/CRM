@@ -11,10 +11,12 @@ import { TrashModal } from '@/components/customers/TrashModal';
 import { apiService, Client } from '@/lib/api-service';
 import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Archive } from 'lucide-react';
 import { useScopedVisibility } from '@/lib/scoped-visibility';
+import { useAuth } from '@/hooks/useAuth';
 import ScopeIndicator from '@/components/ui/ScopeIndicator';
 
 export default function SalesCustomersPage() {
   const { userScope } = useScopedVisibility();
+  const { user } = useAuth();
   const [customers, setCustomers] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,6 +28,9 @@ export default function SalesCustomersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null);
   const [filteredCustomers, setFilteredCustomers] = useState<Client[]>([]);
+
+  // Check if user can delete customers (managers and higher roles)
+  const canDeleteCustomers = user?.role && ['platform_admin', 'business_admin', 'manager'].includes(user.role);
 
   useEffect(() => {
     fetchCustomers();
@@ -95,15 +100,23 @@ export default function SalesCustomersPage() {
       const response = await apiService.deleteClient(customerId);
       if (response.success) {
         console.log('Customer deleted successfully');
-        alert('Customer deleted successfully!');
+        alert('Customer moved to trash successfully!');
         fetchCustomers(); // Refresh the list
       } else {
         console.error('Failed to delete customer:', response);
         alert('Failed to delete customer. Please try again.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting customer:', error);
-      alert('Error deleting customer. Please check the console for details.');
+      
+      // Handle specific permission errors
+      if (error.message && error.message.includes('House sales persons cannot delete customers')) {
+        alert('You do not have permission to delete customers. Only managers can delete customers. Please contact your store manager.');
+      } else if (error.message && error.message.includes('You do not have permission to delete this customer')) {
+        alert('You do not have permission to delete this customer. You can only delete customers from your own store.');
+      } else {
+        alert('Failed to delete customer. Please try again.');
+      }
     }
   };
 
@@ -313,19 +326,21 @@ export default function SalesCustomersPage() {
                           <Edit className="w-4 h-4 mr-1" />
                           Edit
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-red-600 hover:text-red-800"
-                          onClick={() => {
-                            if (window.confirm(`Are you sure you want to move ${customer.first_name} ${customer.last_name} to trash? You can restore them later from the Trash section.`)) {
-                              handleDeleteCustomer(customer.id.toString());
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Move to Trash
-                        </Button>
+                        {canDeleteCustomers && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-red-600 hover:text-red-800"
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to move ${customer.first_name} ${customer.last_name} to trash? You can restore them later from the Trash section.`)) {
+                                handleDeleteCustomer(customer.id.toString());
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Move to Trash
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

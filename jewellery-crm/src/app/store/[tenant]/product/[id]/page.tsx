@@ -89,7 +89,7 @@ export default function ProductDetailPage() {
 
   const discountPercentage = getDiscountPercentage(product.selling_price, product.discount_price);
   const displayPrice = product.discount_price || product.selling_price;
-  const images = product.main_image ? [product.main_image, ...product.additional_images] : product.additional_images;
+  const images = product.main_image_url ? [product.main_image_url, ...product.additional_images] : product.additional_images;
 
   return (
     <CustomerLayout>
@@ -121,8 +121,28 @@ export default function ProductDetailPage() {
             <div className="space-y-4">
               {/* Main Image */}
               <div className="aspect-square bg-white rounded-xl shadow-lg overflow-hidden">
-                <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                  <span className="text-8xl">{images[selectedImage] ? '🖼️' : '💎'}</span>
+                {product.main_image_url ? (
+                  <img
+                    src={product.main_image_url}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Fallback to emoji if image fails to load
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                
+                {/* Fallback emoji when no image or image fails to load */}
+                <div className={`w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${product.main_image_url ? 'hidden' : ''}`}>
+                  <span className="text-8xl">
+                    {product.category_name === 'Rings' ? '💍' : 
+                     product.category_name === 'Necklaces' ? '📿' : 
+                     product.category_name === 'Earrings' ? '👂' : 
+                     product.category_name === 'Crowns' ? '👑' : '💎'}
+                  </span>
                 </div>
               </div>
 
@@ -137,8 +157,28 @@ export default function ProductDetailPage() {
                         selectedImage === index ? 'border-gold' : 'border-gray-200'
                       }`}
                     >
-                      <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                        <span className="text-2xl">{image ? '🖼️' : '💎'}</span>
+                      {image ? (
+                        <img
+                          src={`http://localhost:8000${image}`}
+                          alt={`${product.name} - Image ${index + 1}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // Fallback to emoji if image fails to load
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      
+                      {/* Fallback emoji when no image or image fails to load */}
+                      <div className={`w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${image ? 'hidden' : ''}`}>
+                        <span className="text-2xl">
+                          {product.category_name === 'Rings' ? '💍' : 
+                           product.category_name === 'Necklaces' ? '📿' : 
+                           product.category_name === 'Earrings' ? '👂' : 
+                           product.category_name === 'Crowns' ? '👑' : '💎'}
+                        </span>
                       </div>
                     </button>
                   ))}

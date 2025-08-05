@@ -102,6 +102,7 @@ interface Product {
   is_featured: boolean;
   is_bestseller: boolean;
   main_image?: string;
+  main_image_url?: string;
   additional_images: string[];
   meta_title?: string;
   meta_description?: string;

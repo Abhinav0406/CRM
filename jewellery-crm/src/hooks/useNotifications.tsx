@@ -62,7 +62,7 @@ const notificationReducer = (state: NotificationState, action: NotificationActio
         : state.unreadCount;
       
       // Play notification sound for new unread notifications
-      if (action.payload.status === 'unread') {
+      if (action.payload.status === 'unread' && typeof window !== 'undefined') {
         notificationSound.play();
       }
       

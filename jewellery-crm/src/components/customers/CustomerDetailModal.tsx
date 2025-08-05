@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiService, Client } from "@/lib/api-service";
+import { useAuth } from "@/hooks/useAuth";
 import { Calendar, Phone, Mail, MapPin, User, Clock, Edit, Trash2 } from "lucide-react";
 
 interface CustomerDetailModalProps {
@@ -25,10 +26,14 @@ interface AuditLog {
 }
 
 export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelete }: CustomerDetailModalProps) {
+  const { user } = useAuth();
   const [customer, setCustomer] = useState<Client | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("details");
+
+  // Check if user can delete customers (managers and higher roles)
+  const canDeleteCustomers = user?.role && ['platform_admin', 'business_admin', 'manager'].includes(user.role);
 
   useEffect(() => {
     if (open && customerId) {
@@ -177,14 +182,16 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
               </Button>
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                onClick={handleDelete}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
+              {canDeleteCustomers && (
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              )}
             </div>
           </div>
         </DialogHeader>

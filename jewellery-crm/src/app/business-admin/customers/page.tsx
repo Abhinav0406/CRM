@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Search, Download, Upload, Plus, Filter, MoreHorizontal, Eye, Edit, Trash2, UserPlus, Calendar, MessageSquare, Phone } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
+import { useAuth } from '@/hooks/useAuth';
 import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
 import { ImportModal } from '@/components/customers/ImportModal';
 import { ExportModal } from '@/components/customers/ExportModal';
@@ -54,6 +55,7 @@ interface Client {
 }
 
 export default function CustomersPage() {
+  const { user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,6 +66,9 @@ export default function CustomersPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Check if user can delete customers (managers and higher roles)
+  const canDeleteCustomers = user?.role && ['platform_admin', 'business_admin', 'manager'].includes(user.role);
 
   useEffect(() => {
     fetchClients();
@@ -160,9 +165,17 @@ export default function CustomersPage() {
       try {
         await apiService.deleteClient(client.id.toString());
         fetchClients(); // Refresh the list
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to delete client:', error);
-        alert('Failed to delete customer');
+        
+        // Handle specific permission errors
+        if (error.message && error.message.includes('House sales persons cannot delete customers')) {
+          alert('You do not have permission to delete customers. Only managers can delete customers. Please contact your store manager.');
+        } else if (error.message && error.message.includes('You do not have permission to delete this customer')) {
+          alert('You do not have permission to delete this customer. You can only delete customers from your own store.');
+        } else {
+          alert('Failed to delete customer. Please try again.');
+        }
       }
     }
   };
@@ -427,14 +440,18 @@ export default function CustomersPage() {
                               <UserPlus className="w-4 h-4 mr-2" />
                               Assign to Team Member
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteCustomer(client)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete Customer
-                            </DropdownMenuItem>
+                            {canDeleteCustomers && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleDeleteCustomer(client)}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete Customer
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

@@ -11,7 +11,7 @@ from .serializers import (
     TaskSerializer, AnnouncementSerializer, PurchaseSerializer, AuditLogSerializer,
     CustomerTagSerializer
 )
-from apps.users.permissions import IsRoleAllowed
+from apps.users.permissions import IsRoleAllowed, CanDeleteCustomer
 from apps.users.middleware import ScopedVisibilityMixin
 from rest_framework import mixins
 from rest_framework import permissions
@@ -31,16 +31,28 @@ class IsAdminOrManager(permissions.BasePermission):
         return request.user.is_authenticated and (getattr(request.user, 'role', None) in ['platform_admin', 'business_admin', 'manager'])
 
 class ImportExportPermission(permissions.BasePermission):
-    """Permission class for import/export functionality - only business admin and managers"""
+    """
+    Allows import/export operations only to business admins and managers.
+    """
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        user = request.user
+        if not user or not user.is_authenticated:
             return False
-        return request.user.role in ['business_admin', 'manager']
+        return user.role in ['platform_admin', 'business_admin', 'manager']
+
 
 class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = ClientSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales','manager','business_admin'])]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    
+    def get_permissions(self):
+        """
+        Override to use different permissions for different actions.
+        """
+        if self.action == 'destroy':
+            return [CanDeleteCustomer()]
+        return super().get_permissions()
     
     def get_queryset(self):
         """Filter clients by user scope and exclude soft-deleted clients"""
@@ -296,13 +308,39 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
         instance.delete()
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance._auditlog_user = request.user
-        instance.is_deleted = True
-        from django.utils import timezone
-        instance.deleted_at = timezone.now()
-        instance.save()
-        return Response({'status': 'client soft-deleted'}, status=status.HTTP_204_NO_CONTENT)
+        """
+        Soft delete a client. Only managers and higher roles can delete customers.
+        House sales persons cannot delete customers.
+        """
+        try:
+            instance = self.get_object()
+            
+            # Check if user has permission to delete this customer
+            permission = CanDeleteCustomer()
+            if not permission.has_object_permission(request, self, instance):
+                if request.user.role == 'inhouse_sales':
+                    return Response({
+                        'error': 'House sales persons cannot delete customers. Only managers can delete customers.',
+                        'detail': 'Contact your store manager to delete this customer.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+                else:
+                    return Response({
+                        'error': 'You do not have permission to delete this customer.',
+                        'detail': 'You can only delete customers from your own store.'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            instance._auditlog_user = request.user
+            instance.is_deleted = True
+            from django.utils import timezone
+            instance.deleted_at = timezone.now()
+            instance.save()
+            return Response({'status': 'client soft-deleted'}, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response({
+                'error': 'Failed to delete customer',
+                'detail': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'], url_path='trash')
     def trash(self, request):

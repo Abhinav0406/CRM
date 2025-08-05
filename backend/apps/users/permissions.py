@@ -44,4 +44,35 @@ class IsBusinessAdminOrHigher(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-        return user.role in ['platform_admin', 'business_admin'] 
+        return user.role in ['platform_admin', 'business_admin']
+
+
+class CanDeleteCustomer(BasePermission):
+    """
+    Allows customer deletion only to managers and higher roles.
+    House sales persons cannot delete customers.
+    """
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Only managers and higher roles can delete customers
+        return user.role in ['platform_admin', 'business_admin', 'manager']
+    
+    def has_object_permission(self, request, view, obj):
+        """
+        Additional check for object-level permissions.
+        Managers can only delete customers from their own store.
+        """
+        user = request.user
+        
+        # Platform and business admins can delete any customer
+        if user.role in ['platform_admin', 'business_admin']:
+            return True
+        
+        # Managers can only delete customers from their own store
+        if user.role == 'manager':
+            return obj.store == user.store
+        
+        return False 

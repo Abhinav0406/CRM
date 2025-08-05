@@ -88,8 +88,28 @@ export default function FeaturedProducts({ products }: FeaturedProductsProps) {
             <div key={product.id} className="group bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
               {/* Product Image */}
               <div className="relative aspect-square overflow-hidden">
-                <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                  <span className="text-6xl">{product.main_image ? '🖼️' : '💎'}</span>
+                {product.main_image_url ? (
+                  <img
+                    src={product.main_image_url}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    onError={(e) => {
+                      // Fallback to emoji if image fails to load
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                ) : null}
+                
+                {/* Fallback emoji when no image or image fails to load */}
+                <div className={`w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center ${product.main_image_url ? 'hidden' : ''}`}>
+                  <span className="text-6xl">
+                    {product.category_name === 'Rings' ? '💍' : 
+                     product.category_name === 'Necklaces' ? '📿' : 
+                     product.category_name === 'Earrings' ? '👂' : 
+                     product.category_name === 'Crowns' ? '👑' : '💎'}
+                  </span>
                 </div>
                 
                 {/* Image overlay */}

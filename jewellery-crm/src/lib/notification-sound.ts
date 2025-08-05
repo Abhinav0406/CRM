@@ -10,11 +10,19 @@ class NotificationSound {
   private volume: number = 0.5;
 
   constructor() {
-    this.initializeAudio();
+    // Only initialize audio in browser environment
+    if (typeof window !== 'undefined') {
+      this.initializeAudio();
+    }
   }
 
   private initializeAudio() {
     try {
+      // Check if we're in browser environment
+      if (typeof window === 'undefined') {
+        return;
+      }
+
       // Create a simple notification sound using Web Audio API
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
@@ -46,7 +54,7 @@ class NotificationSound {
    * Play notification sound
    */
   play() {
-    if (!this.isEnabled || !this.audio) return;
+    if (!this.isEnabled || !this.audio || typeof window === 'undefined') return;
 
     try {
       // Create a simple notification sound
@@ -102,5 +110,34 @@ class NotificationSound {
   }
 }
 
-// Create a singleton instance
-export const notificationSound = new NotificationSound(); 
+// Create a lazy singleton instance
+let notificationSoundInstance: NotificationSound | null = null;
+
+export const notificationSound = {
+  get instance() {
+    if (!notificationSoundInstance && typeof window !== 'undefined') {
+      notificationSoundInstance = new NotificationSound();
+    }
+    return notificationSoundInstance;
+  },
+  
+  play() {
+    this.instance?.play();
+  },
+  
+  setEnabled(enabled: boolean) {
+    this.instance?.setEnabled(enabled);
+  },
+  
+  setVolume(volume: number) {
+    this.instance?.setVolume(volume);
+  },
+  
+  getVolume(): number {
+    return this.instance?.getVolume() || 0.5;
+  },
+  
+  isSoundEnabled(): boolean {
+    return this.instance?.isSoundEnabled() || false;
+  }
+}; 
