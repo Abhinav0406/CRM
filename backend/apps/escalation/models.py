@@ -107,7 +107,7 @@ class Escalation(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.title} - {self.client.name} ({self.get_status_display()})"
+        return f"{self.title} - {self.client.full_name} ({self.get_status_display()})"
 
     def save(self, *args, **kwargs):
         # Set due date based on SLA when escalation is created

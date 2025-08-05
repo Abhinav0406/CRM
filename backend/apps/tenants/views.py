@@ -14,6 +14,7 @@ from apps.sales.models import Sale, SalesPipeline
 from apps.products.models import Product
 from apps.users.models import User, TeamMember
 from rest_framework.permissions import IsAuthenticated
+from apps.stores.models import Store
 
 User = get_user_model()
 
@@ -266,9 +267,102 @@ class PlatformAdminDashboardView(APIView):
             )
 
 
+class ManagerDashboardView(APIView):
+    """Manager Dashboard - Provides store-specific data including closed won pipelines"""
+    permission_classes = [IsRoleAllowed.for_roles(['manager'])]
+    
+    def get(self, request):
+        try:
+            user = request.user
+            print(f"=== ManagerDashboardView.get called ===")
+            print(f"User: {user.username}, Role: {user.role}")
+            
+            if not user.store:
+                return Response({
+                    'success': False,
+                    'error': 'Manager not assigned to any store'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"Manager store: {user.store.name}")
+            
+            # Get date range for current month
+            today = timezone.now()
+            start_date = today - timedelta(days=30)
+            end_date = today
+            
+            # Base filters for manager's store only
+            base_sales_filter = {'tenant': user.tenant, 'client__store': user.store}
+            base_pipeline_filter = {'tenant': user.tenant, 'client__store': user.store}
+            
+            # Get sales data for current month
+            monthly_sales = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=start_date,
+                created_at__lte=end_date
+            )
+            
+            # Get closed won pipeline data for current month
+            monthly_closed_won = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            )
+            
+            # Calculate combined revenue
+            sales_revenue = monthly_sales.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            closed_won_revenue = monthly_closed_won.aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+            total_monthly_revenue = sales_revenue + closed_won_revenue
+            
+            # Count sales (including closed won pipelines)
+            sales_count = monthly_sales.count()
+            closed_won_count = monthly_closed_won.count()
+            total_sales_count = sales_count + closed_won_count
+            
+            # Get store customers
+            from apps.clients.models import Client
+            total_customers = Client.objects.filter(tenant=user.tenant, store=user.store).count()
+            
+            # Get team members for this store
+            team_members = User.objects.filter(
+                tenant=user.tenant,
+                store=user.store,
+                role__in=['manager', 'inhouse_sales']
+            )
+            
+            print(f"DEBUG: Sales revenue: {sales_revenue}, Closed won revenue: {closed_won_revenue}")
+            print(f"DEBUG: Total monthly revenue: {total_monthly_revenue}")
+            print(f"DEBUG: Sales count: {sales_count}, Closed won count: {closed_won_count}")
+            print(f"DEBUG: Total sales count: {total_sales_count}")
+            
+            dashboard_data = {
+                'store_name': user.store.name,
+                'monthly_revenue': float(total_monthly_revenue),
+                'sales_count': total_sales_count,
+                'closed_won_count': closed_won_count,
+                'total_customers': total_customers,
+                'team_members_count': team_members.count(),
+                'sales_revenue': float(sales_revenue),
+                'closed_won_revenue': float(closed_won_revenue)
+            }
+            
+            return Response({
+                'success': True,
+                'data': dashboard_data
+            })
+            
+        except Exception as e:
+            print(f"Error in ManagerDashboardView: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'Failed to fetch dashboard data'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class BusinessDashboardView(APIView):
     """Business Admin Dashboard - Provides real data for the dashboard"""
-    permission_classes = [IsRoleAllowed.for_roles(['business_admin'])]
+    permission_classes = [IsRoleAllowed.for_roles(['business_admin', 'manager', 'inhouse_sales'])]
 
     def get(self, request):
         user = request.user
@@ -277,160 +371,319 @@ class BusinessDashboardView(APIView):
         if not tenant:
             return Response({'error': 'No tenant associated with user'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get date range for analytics (last 30 days)
+        # Get date ranges for analytics
         end_date = timezone.now()
         start_date = end_date - timedelta(days=30)
+        today_start = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = end_date - timedelta(days=7)
         
         try:
-            # 1. Total Sales (last 30 days)
-            total_sales = Sale.objects.filter(
-                tenant=tenant,
-                created_at__gte=start_date,
+            # Base filters based on user role
+            base_sales_filter = {'tenant': tenant}
+            base_pipeline_filter = {'tenant': tenant}
+            base_store_filter = {'tenant': tenant}
+            
+            # Role-based filtering
+            if user.role == 'business_admin':
+                # Business admin sees all data across all stores
+                pass
+            elif user.role == 'manager':
+                # Manager sees only their store data
+                if user.store:
+                    base_sales_filter['client__store'] = user.store
+                    base_pipeline_filter['client__store'] = user.store
+                    base_store_filter['id'] = user.store.id
+            elif user.role == 'inhouse_sales':
+                # In-house sales sees only their store data
+                if user.store:
+                    base_sales_filter['client__store'] = user.store
+                    base_pipeline_filter['client__store'] = user.store
+                    base_store_filter['id'] = user.store.id
+            
+            # 1. Total Sales (today, week, month) - Include both sales and closed won pipeline
+            today_sales = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=today_start,
                 created_at__lte=end_date
-            ).aggregate(
-                total=Sum('total_amount'),
-                count=Count('id')
-            )
+            ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
             
-            sales_amount = total_sales['total'] or Decimal('0.00')
-            sales_count = total_sales['count'] or 0
+            today_closed_won = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=today_start, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
-            # 2. Active Customers (customers with recent activity)
-            active_customers = Client.objects.filter(
-                tenant=tenant,
-                updated_at__gte=start_date
+            today_total = today_sales + today_closed_won
+            
+            # Count sales (including closed won pipelines)
+            today_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=today_start,
+                created_at__lte=end_date
             ).count()
             
-            # 3. Total Products
-            total_products = Product.objects.filter(tenant=tenant).count()
+            today_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=today_start, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).count()
             
-            # 4. Team Members
-            team_members = User.objects.filter(
-                tenant=tenant,
-                is_active=True
-            ).exclude(role=User.Role.PLATFORM_ADMIN).count()
+            today_total_sales_count = today_sales_count + today_closed_won_count
             
-            # 5. Sales Pipeline Metrics
-            pipeline_data = SalesPipeline.objects.filter(tenant=tenant).values('stage').annotate(
-                count=Count('id')
-            )
+            week_sales = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=week_start,
+                created_at__lte=end_date
+            ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
             
-            # Initialize pipeline counts
-            pipeline_counts = {
-                'leads': 0,
-                'qualified': 0,
-                'proposals': 0,
-                'negotiations': 0,
-                'closed': 0
-            }
+            week_closed_won = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=week_start, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
-            # Map pipeline stages to dashboard categories
-            for item in pipeline_data:
-                stage = item['stage']
-                count = item['count']
+            week_total = week_sales + week_closed_won
+            
+            # Count sales (including closed won pipelines)
+            week_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=week_start,
+                created_at__lte=end_date
+            ).count()
+            
+            week_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=week_start, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).count()
+            
+            week_total_sales_count = week_sales_count + week_closed_won_count
+            
+            month_sales = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=start_date,
+                created_at__lte=end_date
+            ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            
+            month_closed_won = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+            
+            month_total = month_sales + month_closed_won
+            
+            # Count sales (including closed won pipelines)
+            month_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=start_date,
+                created_at__lte=end_date
+            ).count()
+            
+            month_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+            ).count()
+            
+            month_total_sales_count = month_sales_count + month_closed_won_count
+            
+            # 2. Pipeline Revenue (pending deals)
+            pipeline_revenue = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage__in=['lead', 'contacted', 'qualified', 'proposal', 'negotiation']
+            ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+            
+            # 3. Closed Won Pipeline Count (moved to sales section)
+            closed_won_pipeline_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).count()
+            
+            # 4. Pipeline Deals Count (pending deals)
+            pipeline_deals_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage__in=['lead', 'contacted', 'qualified', 'proposal', 'negotiation']
+            ).count()
+            
+            # 5. Store Performance
+            stores = Store.objects.filter(**base_store_filter)
+            store_performance = []
+            
+            for store in stores:
+                # For business admin, we need to filter by the specific store
+                # For manager/inhouse_sales, they already have store filter applied
+                store_sales_filter = {**base_sales_filter}
+                store_pipeline_filter = {**base_pipeline_filter}
                 
-                if stage in ['lead']:
-                    pipeline_counts['leads'] += count
-                elif stage in ['contacted', 'qualified']:
-                    pipeline_counts['qualified'] += count
-                elif stage in ['proposal']:
-                    pipeline_counts['proposals'] += count
-                elif stage in ['negotiation']:
-                    pipeline_counts['negotiations'] += count
-                elif stage in ['closed_won', 'closed_lost']:
-                    pipeline_counts['closed'] += count
-            
-            # 6. Recent Sales (last 10 sales)
-            recent_sales = Sale.objects.filter(
-                tenant=tenant
-            ).select_related('client').order_by('-created_at')[:10]
-            
-            recent_sales_data = []
-            for sale in recent_sales:
-                recent_sales_data.append({
-                    'id': sale.id,
-                    'client_name': sale.client.full_name if sale.client else 'Unknown',
-                    'amount': float(sale.total_amount),
-                    'status': sale.status,
-                    'date': sale.created_at.strftime('%Y-%m-%d'),
-                    'items_count': sale.items.count() if hasattr(sale, 'items') else 1
+                if user.role == 'business_admin':
+                    # Business admin sees all stores, so filter by specific store
+                    store_sales_filter['client__store'] = store
+                    store_pipeline_filter['client__store'] = store
+                elif user.role in ['manager', 'inhouse_sales'] and user.store:
+                    # Manager/sales already have store filter, but ensure it's the right store
+                    if user.store.id == store.id:
+                        store_sales_filter['client__store'] = store
+                        store_pipeline_filter['client__store'] = store
+                    else:
+                        # Skip stores that don't match user's store
+                        continue
+                
+                store_sales = Sale.objects.filter(
+                    **store_sales_filter,
+                    created_at__gte=start_date,
+                    created_at__lte=end_date
+                )
+                
+                # Debug: Check all time data
+                all_time_sales = Sale.objects.filter(**store_sales_filter).count()
+                all_time_pipeline = SalesPipeline.objects.filter(**store_pipeline_filter, stage='closed_won').count()
+                
+                store_revenue = store_sales.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+                
+                store_closed_won = SalesPipeline.objects.filter(
+                    **store_pipeline_filter,
+                    stage='closed_won'
+                ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+                
+                # Total store revenue = sales + closed won pipeline
+                store_total_revenue = store_revenue + store_closed_won
+                
+                store_performance.append({
+                    'id': store.id,
+                    'name': store.name,
+                    'revenue': float(store_total_revenue),
+                    'closed_won_revenue': float(store_closed_won)
                 })
             
-            # 7. Recent Activity (last 10 activities)
-            recent_activities = []
+            # 6. Top Performing Managers (only for business admin and manager roles)
+            top_managers = []
+            if user.role in ['business_admin', 'manager']:
+                managers = User.objects.filter(
+                    tenant=tenant,
+                    role__in=['business_admin', 'manager'],
+                    is_active=True
+                )
+                
+                for manager in managers:
+                    manager_sales_filter = {**base_sales_filter}
+                    if user.role == 'manager' and user.store:
+                        manager_sales_filter['client__store'] = user.store
+                    
+                    manager_sales = Sale.objects.filter(
+                        **manager_sales_filter,
+                        created_at__gte=start_date,
+                        created_at__lte=end_date
+                    ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+                    
+                    manager_pipeline_filter = {**base_pipeline_filter}
+                    if user.role == 'manager' and user.store:
+                        manager_pipeline_filter['client__store'] = user.store
+                    
+                    manager_closed_won = SalesPipeline.objects.filter(
+                        **manager_pipeline_filter,
+                        stage='closed_won'
+                    ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+                    
+                    manager_deals = SalesPipeline.objects.filter(
+                        **manager_pipeline_filter,
+                        stage='closed_won'
+                    ).count()
+                    
+                    # Total manager revenue = sales + closed won pipeline
+                    manager_total_revenue = manager_sales + manager_closed_won
+                    
+                    if float(manager_total_revenue) > 0:
+                        top_managers.append({
+                            'id': manager.id,
+                            'name': f"{manager.first_name} {manager.last_name}",
+                            'revenue': float(manager_total_revenue),
+                            'deals_closed': manager_deals
+                        })
+                
+                # Sort managers by revenue
+                top_managers.sort(key=lambda x: x['revenue'], reverse=True)
+                top_managers = top_managers[:5]  # Top 5 managers
             
-            # Add recent sales as activities
-            for sale in recent_sales[:5]:
-                recent_activities.append({
-                    'type': 'sale',
-                    'title': f'New sale to {sale.client.full_name if sale.client else "Unknown"}',
-                    'description': f'Sale of ₹{sale.total_amount}',
-                    'date': sale.created_at.strftime('%Y-%m-%d %H:%M'),
-                    'amount': float(sale.total_amount)
-                })
-            
-            # Add recent pipeline activities
-            recent_pipelines = SalesPipeline.objects.filter(
-                tenant=tenant
-            ).select_related('client').order_by('-updated_at')[:5]
-            
-            for pipeline in recent_pipelines:
-                recent_activities.append({
-                    'type': 'pipeline',
-                    'title': f'Pipeline: {pipeline.title}',
-                    'description': f'{pipeline.client.full_name} - {pipeline.get_stage_display()} (₹{pipeline.expected_value})',
-                    'date': pipeline.updated_at.strftime('%Y-%m-%d %H:%M'),
-                    'amount': float(pipeline.expected_value)
-                })
-            
-            # Add recent customer additions
-            recent_customers = Client.objects.filter(
-                tenant=tenant
-            ).order_by('-created_at')[:5]
-            
-            for customer in recent_customers:
-                recent_activities.append({
-                    'type': 'customer',
-                    'title': f'New customer: {customer.full_name}',
-                    'description': f'Customer added to database',
-                    'date': customer.created_at.strftime('%Y-%m-%d %H:%M'),
-                    'amount': None
-                })
-            
-            # Sort activities by date
-            recent_activities.sort(key=lambda x: x['date'], reverse=True)
-            recent_activities = recent_activities[:10]
-            
-            # 8. Growth metrics
-            previous_period_start = start_date - timedelta(days=30)
-            previous_sales = Sale.objects.filter(
+            # 7. Top Performing Salesmen
+            salesmen = User.objects.filter(
                 tenant=tenant,
-                created_at__gte=previous_period_start,
-                created_at__lt=start_date
-            ).aggregate(total=Sum('total_amount'))
+                role='inhouse_sales',
+                is_active=True
+            )
+            top_salesmen = []
             
-            previous_sales_amount = previous_sales['total'] or Decimal('0.00')
-            sales_growth = 0
-            if previous_sales_amount > 0:
-                sales_growth = ((sales_amount - previous_sales_amount) / previous_sales_amount) * 100
+            for salesman in salesmen:
+                salesman_sales_filter = {**base_sales_filter}
+                if user.role in ['manager', 'inhouse_sales'] and user.store:
+                    salesman_sales_filter['client__store'] = user.store
+                
+                salesman_sales = Sale.objects.filter(
+                    **salesman_sales_filter,
+                    sales_representative=salesman,
+                    created_at__gte=start_date,
+                    created_at__lte=end_date
+                ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+                
+                salesman_pipeline_filter = {**base_pipeline_filter}
+                if user.role in ['manager', 'inhouse_sales'] and user.store:
+                    salesman_pipeline_filter['client__store'] = user.store
+                
+                salesman_closed_won = SalesPipeline.objects.filter(
+                    **salesman_pipeline_filter,
+                    sales_representative=salesman,
+                    stage='closed_won'
+                ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+                
+                salesman_deals = SalesPipeline.objects.filter(
+                    **salesman_pipeline_filter,
+                    sales_representative=salesman,
+                    stage='closed_won'
+                ).count()
+                
+                # Total salesman revenue = sales + closed won pipeline
+                salesman_total_revenue = salesman_sales + salesman_closed_won
+                
+                if float(salesman_total_revenue) > 0:
+                    top_salesmen.append({
+                        'id': salesman.id,
+                        'name': f"{salesman.first_name} {salesman.last_name}",
+                        'revenue': float(salesman_total_revenue),
+                        'deals_closed': salesman_deals
+                    })
+            
+            # Sort salesmen by revenue
+            top_salesmen.sort(key=lambda x: x['revenue'], reverse=True)
+            top_salesmen = top_salesmen[:5]  # Top 5 salesmen
             
             # Prepare response data
             dashboard_data = {
-                'metrics': {
-                    'total_sales': float(sales_amount),
-                    'sales_count': sales_count,
-                    'active_customers': active_customers,
-                    'total_products': total_products,
-                    'team_members': team_members,
-                    'sales_growth': round(sales_growth, 2)
+                'total_sales': {
+                    'today': float(today_total),
+                    'week': float(week_total),
+                    'month': float(month_total),
+                    'today_count': today_total_sales_count,
+                    'week_count': week_total_sales_count,
+                    'month_count': month_total_sales_count
                 },
-                'pipeline': pipeline_counts,
-                'recent_sales': recent_sales_data,
-                'recent_activities': recent_activities,
-                'period': {
-                    'start_date': start_date.strftime('%Y-%m-%d'),
-                    'end_date': end_date.strftime('%Y-%m-%d')
-                }
+                'pipeline_revenue': float(pipeline_revenue),
+                'closed_won_pipeline_count': closed_won_pipeline_count,
+                'pipeline_deals_count': pipeline_deals_count,
+                'store_performance': store_performance,
+                'top_managers': top_managers,
+                'top_salesmen': top_salesmen
             }
             
             return Response(dashboard_data)
@@ -439,57 +692,54 @@ class BusinessDashboardView(APIView):
             print(f"Error in BusinessDashboardView: {e}")
             # Return mock data if there's an error
             return Response({
-                'metrics': {
-                    'total_sales': 125000.00,
-                    'sales_count': 15,
-                    'active_customers': 89,
-                    'total_products': 45,
-                    'team_members': 8,
-                    'sales_growth': 12.5
+                'total_sales': {
+                    'today': 25000.00,
+                    'week': 150000.00,
+                    'month': 450000.00
                 },
-                'pipeline': {
-                    'leads': 25,
-                    'qualified': 18,
-                    'proposals': 12,
-                    'negotiations': 8,
-                    'closed': 15
-                },
-                'recent_sales': [
+                'pipeline_revenue': 350000.00,
+                'closed_won_pipeline_count': 25,
+                'pipeline_deals_count': 18,
+                'store_performance': [
                     {
                         'id': 1,
-                        'client_name': 'Priya Sharma',
-                        'amount': 25000.00,
-                        'status': 'completed',
-                        'date': '2024-10-15',
-                        'items_count': 2
+                        'name': 'Main Store',
+                        'revenue': 250000.00,
+                        'closed_won_revenue': 200000.00
                     },
                     {
                         'id': 2,
-                        'client_name': 'Rajesh Kumar',
-                        'amount': 45000.00,
-                        'status': 'completed',
-                        'date': '2024-10-14',
-                        'items_count': 1
+                        'name': 'Branch Store',
+                        'revenue': 200000.00,
+                        'closed_won_revenue': 150000.00
                     }
                 ],
-                'recent_activities': [
+                'top_managers': [
                     {
-                        'type': 'sale',
-                        'title': 'New sale to Priya Sharma',
-                        'description': 'Sale of ₹25,000',
-                        'date': '2024-10-15 14:30',
-                        'amount': 25000.00
+                        'id': 1,
+                        'name': 'Rajesh Kumar',
+                        'revenue': 120000.00,
+                        'deals_closed': 8
                     },
                     {
-                        'type': 'customer',
-                        'title': 'New customer: Anita Patel',
-                        'description': 'Customer added to database',
-                        'date': '2024-10-15 10:15',
-                        'amount': None
+                        'id': 2,
+                        'name': 'Priya Sharma',
+                        'revenue': 95000.00,
+                        'deals_closed': 6
                     }
                 ],
-                'period': {
-                    'start_date': (timezone.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
-                    'end_date': timezone.now().strftime('%Y-%m-%d')
-                }
+                'top_salesmen': [
+                    {
+                        'id': 3,
+                        'name': 'Amit Patel',
+                        'revenue': 85000.00,
+                        'deals_closed': 12
+                    },
+                    {
+                        'id': 4,
+                        'name': 'Neha Singh',
+                        'revenue': 72000.00,
+                        'deals_closed': 10
+                    }
+                ]
             })

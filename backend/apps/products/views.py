@@ -62,6 +62,7 @@ class ProductCreateView(generics.CreateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    parser_classes = [MultiPartParser, FormParser]
     
     def perform_create(self, serializer):
         serializer.save(tenant=self.request.user.tenant)
@@ -80,6 +81,7 @@ class ProductUpdateView(generics.UpdateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated, IsRoleAllowed.for_roles(['business_admin', 'manager'])]
+    parser_classes = [MultiPartParser, FormParser]
     
     def get_queryset(self):
         return Product.objects.filter(tenant=self.request.user.tenant)

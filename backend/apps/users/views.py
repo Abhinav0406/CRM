@@ -923,29 +923,22 @@ def login_view(request):
             'error': 'Username and password are required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Try to authenticate
+    # Try to authenticate with Django's built-in authentication
     user = authenticate(username=username, password=password)
     print(f"Authenticate result: {user}")
     
     if user is None:
-        # If authentication fails, try to find user and check demo passwords
+        # If authentication fails, check if user exists and provide helpful error
         try:
             user = User.objects.get(username=username)
-            print(f"Found user: {user.username}, checking demo passwords")
-            
-            # Check multiple demo passwords
-            demo_passwords = ['demo123', 'password123', 'admin123']
-            if password in demo_passwords:
-                print(f"Demo password accepted: {password}")
-            else:
-                print(f"Demo password rejected. Expected one of: {demo_passwords}, Got: {password}")
-                return Response({
-                    'error': 'Invalid credentials'
-                }, status=status.HTTP_401_UNAUTHORIZED)
+            print(f"User exists but password is incorrect: {user.username}")
+            return Response({
+                'error': 'Invalid password. Please check your password and try again.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
         except User.DoesNotExist:
             print(f"User not found: {username}")
             return Response({
-                'error': 'Invalid credentials'
+                'error': 'User not found. Please check your username and try again.'
             }, status=status.HTTP_401_UNAUTHORIZED)
     
     if not user.is_active:
@@ -971,6 +964,13 @@ def login_view(request):
             'last_name': user.last_name,
             'role': user.role,
             'name': user.get_full_name() or user.username,
+            'phone': user.phone,
+            'address': user.address,
+            'is_active': user.is_active,
+            'tenant': user.tenant.id if user.tenant else None,
+            'store': user.store.id if user.store else None,
+            'tenant_name': user.tenant.name if user.tenant else None,
+            'store_name': user.store.name if user.store else None,
         }
     })
 

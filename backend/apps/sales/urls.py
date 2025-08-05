@@ -11,9 +11,12 @@ urlpatterns = [
     path('<int:pk>/update/', views.SaleUpdateView.as_view(), name='sale-update'),
     path('<int:pk>/delete/', views.SaleDeleteView.as_view(), name='sale-delete'),
     path('export/', views.SalesExportView.as_view(), name='sale-export'),
+    path('dashboard/', views.SalesDashboardView.as_view(), name='sale-dashboard'),
     
     # Sales Pipeline
     path('pipeline/', views.SalesPipelineListView.as_view(), name='pipeline-list'),
+    path('pipeline/my/', views.MySalesPipelineListView.as_view(), name='pipeline-my'),
+    path('pipeline/my/<int:pk>/', views.MySalesPipelineDetailView.as_view(), name='pipeline-my-detail'),
     path('pipeline/create/', views.SalesPipelineCreateView.as_view(), name='pipeline-create'),
     path('pipeline/<int:pk>/', views.SalesPipelineDetailView.as_view(), name='pipeline-detail'),
     path('pipeline/<int:pk>/update/', views.SalesPipelineUpdateView.as_view(), name='pipeline-update'),

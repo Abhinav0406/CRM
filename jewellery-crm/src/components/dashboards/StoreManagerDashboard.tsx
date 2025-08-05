@@ -41,10 +41,12 @@ import {
   Award,
   AlertCircle,
   CheckCircle,
+  DollarSign,
 } from 'lucide-react';
 import { apiService, User, Client, Product, Sale, Appointment } from '@/lib/api-service';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
  * Store metrics interface
@@ -135,6 +137,10 @@ export function StoreManagerDashboard() {
   const [loading, setLoading] = React.useState(true);
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   
+  // Business Admin Dashboard Data
+  const [dashboardData, setDashboardData] = React.useState<any>(null);
+  const [dashboardError, setDashboardError] = React.useState<string | null>(null);
+  
   const { user, isAuthenticated, login } = useAuth();
   const router = useRouter();
 
@@ -169,6 +175,37 @@ export function StoreManagerDashboard() {
 
   const navigateToPipeline = () => {
     router.push('/manager/pipeline');
+  };
+
+  // Utility functions for business admin dashboard
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('en-IN').format(num);
+  };
+
+  const getRoleDisplayName = () => {
+    if (!user) return 'Manager';
+    switch (user.role) {
+      case 'manager':
+        return 'Store Manager';
+      case 'inhouse_sales':
+        return 'Sales Representative';
+      default:
+        return 'Manager';
+    }
+  };
+
+  const getScopeDescription = () => {
+    if (!user) return 'Store-specific data';
+    return `Store: ${user.store_name || 'Your Store'}`;
   };
 
   React.useEffect(() => {
@@ -346,36 +383,71 @@ export function StoreManagerDashboard() {
       // Fetch sales
       console.log('💰 Fetching sales...');
       try {
-        salesResponse = await apiService.getSales();
-        console.log('Sales response:', salesResponse);
-        if (salesResponse.success && salesResponse.data) {
-          const sales = Array.isArray(salesResponse.data) ? salesResponse.data : [];
-          console.log('Total sales found:', sales.length);
-          const today = new Date().toISOString().split('T')[0];
-          const thisMonth = new Date().getMonth();
-          const thisYear = new Date().getFullYear();
+        // Use the new manager dashboard API that includes closed won pipelines
+        const dashboardResponse = await apiService.getManagerDashboard();
+        console.log('Manager Dashboard response:', dashboardResponse);
+        
+        if (dashboardResponse.success && dashboardResponse.data) {
+          const dashboardData = dashboardResponse.data;
           
-          todaySales = sales.filter((sale: Sale) => 
-            sale.order_date?.startsWith(today)
-          ).reduce((sum: number, sale: Sale) => sum + sale.total_amount, 0);
-          console.log('Today sales:', todaySales);
+          // Update revenue with combined sales + closed won pipelines
+          todaySales = 0; // Today's sales would need separate calculation
+          monthlyRevenue = dashboardData.monthly_revenue || 0;
           
-          monthlyRevenue = sales.filter((sale: Sale) => {
-            const saleDate = new Date(sale.order_date);
-            return saleDate.getMonth() === thisMonth && saleDate.getFullYear() === thisYear;
-          }).reduce((sum: number, sale: Sale) => sum + sale.total_amount, 0);
-          console.log('Monthly revenue:', monthlyRevenue);
+          console.log('Manager dashboard data:', dashboardData);
+          console.log('Monthly revenue (including closed won):', monthlyRevenue);
         } else {
-          console.log('❌ Failed to get sales:', salesResponse);
-          // Set default values when no sales data
-          todaySales = 0;
-          monthlyRevenue = 0;
+          console.log('❌ Failed to get manager dashboard:', dashboardResponse);
+          // Fallback to old sales API
+          salesResponse = await apiService.getSales();
+          console.log('Sales response:', salesResponse);
+          if (salesResponse.success && salesResponse.data) {
+            const sales = Array.isArray(salesResponse.data) ? salesResponse.data : [];
+            console.log('Total sales found:', sales.length);
+            const today = new Date().toISOString().split('T')[0];
+            const thisMonth = new Date().getMonth();
+            const thisYear = new Date().getFullYear();
+            
+            todaySales = sales.filter((sale: Sale) => 
+              sale.order_date?.startsWith(today)
+            ).reduce((sum: number, sale: Sale) => sum + sale.total_amount, 0);
+            console.log('Today sales:', todaySales);
+            
+            monthlyRevenue = sales.filter((sale: Sale) => {
+              const saleDate = new Date(sale.order_date);
+              return saleDate.getMonth() === thisMonth && saleDate.getFullYear() === thisYear;
+            }).reduce((sum: number, sale: Sale) => sum + sale.total_amount, 0);
+            console.log('Monthly revenue:', monthlyRevenue);
+          } else {
+            console.log('❌ Failed to get sales:', salesResponse);
+            // Set default values when no sales data
+            todaySales = 0;
+            monthlyRevenue = 0;
+          }
         }
       } catch (error) {
         console.error('❌ Error fetching sales:', error);
         // Set default values when no sales data
         todaySales = 0;
         monthlyRevenue = 0;
+      }
+
+      // Fetch Business Admin Dashboard Data for Manager's Store
+      console.log('📊 Fetching business admin dashboard data...');
+      try {
+        const businessDashboardResponse = await apiService.getBusinessAdminDashboard();
+        console.log('Business Admin Dashboard response:', businessDashboardResponse);
+        
+        if (businessDashboardResponse.success && businessDashboardResponse.data) {
+          setDashboardData(businessDashboardResponse.data);
+          console.log('✅ Business admin dashboard data set');
+        } else {
+          console.log('❌ Failed to get business admin dashboard:', businessDashboardResponse);
+          setDashboardError('Failed to load dashboard data');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching business admin dashboard:', error);
+        setDashboardError('Failed to load dashboard data');
       }
 
       // Fetch appointments
@@ -486,10 +558,16 @@ export function StoreManagerDashboard() {
 
   return (
     <DashboardLayout
-      title="Store Dashboard"
-      subtitle={`${storeMetrics.store.name} - Daily operations and team performance`}
+      title={`${user?.store_name || 'Store'} Dashboard`}
+      subtitle={`${user?.store_name || 'Your Store'} - Daily operations and team performance`}
       actions={
         <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 px-3 py-1 bg-blue-50 rounded-lg border">
+            <Store className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-700">
+              {user?.store_name || 'Your Store'}
+            </span>
+          </div>
           <Button variant="outline" size="sm" onClick={() => fetchDashboardData()}>
             <TrendingUp className="w-4 h-4 mr-2" />
             Refresh Data
@@ -505,74 +583,147 @@ export function StoreManagerDashboard() {
         </div>
       }
     >
+      {/* Business Admin Dashboard Cards - Store Specific */}
+      {dashboardData && (
+        <>
+          {/* KPI Cards - Store Specific */}
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Store className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-semibold text-text-primary">
+                {user?.store_name || 'Your Store'} - Key Performance Indicators
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {/* Total Sales */}
+              <Card className="shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-secondary">Total Sales</p>
+                      <p className="text-lg font-bold text-text-primary">
+                        {formatCurrency(dashboardData.total_sales?.month || 0)}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        Today: {formatCurrency(dashboardData.total_sales?.today || 0)} | 
+                        Week: {formatCurrency(dashboardData.total_sales?.week || 0)}
+                      </p>
+                      <p className="text-xs text-green-600 font-medium">
+                        {dashboardData.total_sales?.month_count || 0} sales (includes closed won)
+                      </p>
+                    </div>
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <DollarSign className="w-4 h-4 text-green-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              {/* Revenue in Pipeline */}
+              <Card className="shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-secondary">Revenue in Pipeline</p>
+                      <p className="text-lg font-bold text-text-primary">
+                        {formatCurrency(dashboardData.pipeline_revenue || 0)}
+                      </p>
+                      <p className="text-xs text-text-secondary">Potential revenue</p>
+                      <p className="text-xs text-blue-600 font-medium">Store pending deals - revenue</p>
+                    </div>
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Target className="w-4 h-4 text-blue-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              {/* Closed Won Pipeline */}
+              <Card className="shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-secondary">Closed Won Pipeline</p>
+                      <p className="text-lg font-bold text-text-primary">
+                        {formatNumber(dashboardData.closed_won_pipeline_count || 0)}
+                      </p>
+                      <p className="text-xs text-text-secondary">Successfully closed</p>
+                      <p className="text-xs text-purple-600 font-medium">Store deal count: closed won</p>
+                    </div>
+                    <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                      <ShoppingBag className="w-4 h-4 text-purple-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              {/* How Many in Pipeline */}
+              <Card className="shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-secondary">How Many in Pipeline</p>
+                      <p className="text-lg font-bold text-text-primary">
+                        {formatNumber(dashboardData.pipeline_deals_count || 0)}
+                      </p>
+                      <p className="text-xs text-text-secondary">Active deals</p>
+                      <p className="text-xs text-orange-600 font-medium">Store deal count: pending deals</p>
+                    </div>
+                    <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4 text-orange-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Store Performance - Manager's Store Only */}
+          <Card className="shadow-sm mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Store className="w-5 h-5" />
+                Store Performance - {user?.store_name || 'Your Store'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {dashboardData.store_performance?.filter((store: any) => 
+                  store.name === user?.store_name
+                ).map((store: any, index: number) => (
+                  <div key={store.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-text-primary">{store.name}</h3>
+                      <Badge variant="outline" className="text-xs">
+                        Your Store
+                      </Badge>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-text-secondary">Total Revenue:</span>
+                        <span className="font-medium text-text-primary">
+                          {formatCurrency(store.revenue)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-text-secondary">Closed Won:</span>
+                        <span className="font-medium text-green-600">
+                          {formatCurrency(store.closed_won_revenue)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-secondary mt-2">
+                        Store closed won - Revenue
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
       {/* Store Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {/* Today's Sales */}
-        <CardContainer className="border-l-4 border-l-primary">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Today's Sales</p>
-              <p className="text-3xl font-bold text-foreground flex items-center">
-                <IndianRupee className="w-6 h-6 mr-1" />
-                {(storeMetrics.store.revenue.today / 1000).toFixed(0)}K
-              </p>
-              <p className="text-sm text-green-600 font-medium mt-1">
-                Target: ₹50K
-              </p>
-            </div>
-            <ShoppingBag className="h-8 w-8 text-primary" />
-          </div>
-        </CardContainer>
-
-        {/* Monthly Revenue */}
-        <CardContainer className="border-l-4 border-l-green-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Monthly Revenue</p>
-              <p className="text-3xl font-bold text-foreground flex items-center">
-                <IndianRupee className="w-6 h-6 mr-1" />
-                {(storeMetrics.store.revenue.thisMonth / 100000).toFixed(1)}L
-              </p>
-              <p className="text-sm text-green-600 font-medium mt-1 flex items-center">
-                <ArrowUpRight className="w-3 h-3 mr-1" />
-                +{storeMetrics.store.revenue.growth}% growth
-              </p>
-            </div>
-            <TrendingUp className="h-8 w-8 text-green-500" />
-          </div>
-        </CardContainer>
-
-        {/* Store Customers */}
-        <CardContainer className="border-l-4 border-l-blue-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Store Customers</p>
-              <p className="text-3xl font-bold text-foreground">{storeMetrics.store.customers.total}</p>
-              <p className="text-sm text-green-600 font-medium mt-1">
-                +{storeMetrics.store.customers.newToday} new today
-              </p>
-            </div>
-            <Users className="h-8 w-8 text-blue-500" />
-          </div>
-        </CardContainer>
-
-        {/* Team Present */}
-        <CardContainer className="border-l-4 border-l-purple-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Team Present</p>
-              <p className="text-3xl font-bold text-foreground">
-                {storeMetrics.store.team.present}/{storeMetrics.store.team.total}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {storeMetrics.store.customers.appointments} appointments today
-              </p>
-            </div>
-            <Store className="h-8 w-8 text-purple-500" />
-          </div>
-        </CardContainer>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Sales Team Performance */}
         <CardContainer>

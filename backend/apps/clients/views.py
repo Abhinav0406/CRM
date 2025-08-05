@@ -12,6 +12,7 @@ from .serializers import (
     CustomerTagSerializer
 )
 from apps.users.permissions import IsRoleAllowed
+from apps.users.middleware import ScopedVisibilityMixin
 from rest_framework import mixins
 from rest_framework import permissions
 import csv
@@ -36,33 +37,19 @@ class ImportExportPermission(permissions.BasePermission):
             return False
         return request.user.role in ['business_admin', 'manager']
 
-class ClientViewSet(viewsets.ModelViewSet):
+class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = ClientSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales','manager','business_admin'])]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def get_queryset(self):
-        """Filter clients by tenant for authenticated users and exclude soft-deleted clients"""
-        queryset = Client.objects.all()
+        """Filter clients by user scope and exclude soft-deleted clients"""
         # For restore and permanent_delete actions, include soft-deleted clients
         if hasattr(self, 'action') and self.action in ['restore', 'permanent_delete']:
-            pass  # Don't filter out soft-deleted clients
+            queryset = self.get_scoped_queryset(Client)
         else:
-            queryset = queryset.filter(is_deleted=False)
-        user = self.request.user
-        if user.is_authenticated:
-            if user.is_manager:
-                # Managers see customers for their tenant only
-                if user.tenant:
-                    queryset = queryset.filter(tenant=user.tenant)
-                else:
-                    queryset = Client.objects.none()
-            elif user.tenant:
-                queryset = queryset.filter(tenant=user.tenant)
-            else:
-                queryset = Client.objects.none()
-        else:
-            queryset = Client.objects.none()
+            queryset = self.get_scoped_queryset(Client, is_deleted=False)
+        
         return queryset
     
     def create(self, request, *args, **kwargs):
@@ -81,6 +68,12 @@ class ClientViewSet(viewsets.ModelViewSet):
                 print("=== SERIALIZER VALIDATION FAILED ===")
                 print(f"Validation errors: {serializer.errors}")
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Set tenant and store automatically
+            if request.user.tenant:
+                request.data['tenant'] = request.user.tenant.id
+            if request.user.store:
+                request.data['store'] = request.user.store.id
             
             response = super().create(request, *args, **kwargs)
             print("=== DJANGO VIEW - CREATE SUCCESS ===")
@@ -204,6 +197,24 @@ class ClientViewSet(viewsets.ModelViewSet):
         result = serializer.save()
         print(f"=== UPDATE COMPLETED ===")
         return result
+
+    def perform_create(self, serializer):
+        """Automatically set tenant and store when creating a client."""
+        user = self.request.user
+        instance = serializer.save()
+        
+        # Set tenant and store if not already set
+        if user.tenant and not instance.tenant:
+            instance.tenant = user.tenant
+        if user.store and not instance.store:
+            instance.store = user.store
+        
+        if instance.tenant or instance.store:
+            instance.save()
+        
+        # Set audit log user for tracking
+        instance._auditlog_user = user
+        return instance
 
     def update(self, request, *args, **kwargs):
         print(f"=== CLIENT VIEW UPDATE METHOD ===")
@@ -853,7 +864,7 @@ class ClientInteractionViewSet(viewsets.ModelViewSet):
     serializer_class = ClientInteractionSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales', 'business_admin', 'manager'])]
 
-class AppointmentViewSet(viewsets.ModelViewSet):
+class AppointmentViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = AppointmentSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales', 'business_admin', 'manager'])]
 
@@ -876,28 +887,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return response
 
     def get_queryset(self):
-        queryset = Appointment.objects.filter(is_deleted=False)
-        user = self.request.user
-        
-        print(f"=== APPOINTMENT QUERYSET DEBUG ===")
-        print(f"User: {user}")
-        print(f"User authenticated: {user.is_authenticated}")
-        print(f"User tenant: {user.tenant}")
-        print(f"Total appointments before filtering: {queryset.count()}")
-        
-        if user.is_authenticated and user.tenant:
-            queryset = queryset.filter(tenant=user.tenant)
-            print(f"Appointments after tenant filter: {queryset.count()}")
-        else:
-            # Temporarily allow all appointments if no tenant is found
-            print("No tenant found, but allowing all appointments for debugging")
-            # queryset = Appointment.objects.none()
+        """Filter appointments by user scope"""
+        queryset = self.get_scoped_queryset(Appointment, is_deleted=False)
         
         # Filter by status
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-            print(f"Appointments after status filter: {queryset.count()}")
         
         # Filter by date range
         start_date = self.request.query_params.get('start_date')
@@ -911,9 +907,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         assigned_to = self.request.query_params.get('assigned_to')
         if assigned_to:
             queryset = queryset.filter(assigned_to_id=assigned_to)
-        
-        print(f"Final queryset count: {queryset.count()}")
-        print(f"Final queryset: {list(queryset.values('id', 'client__first_name', 'date', 'time', 'status', 'tenant'))}")
         
         return queryset
 
@@ -1058,25 +1051,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class FollowUpViewSet(viewsets.ModelViewSet):
+class FollowUpViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = FollowUpSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales', 'manager', 'business_admin'])]
 
     def get_queryset(self):
-        queryset = FollowUp.objects.filter(is_deleted=False)
-        user = self.request.user
-        
-        if user.is_authenticated and user.tenant:
-            queryset = queryset.filter(tenant=user.tenant)
-            
-            # For managers, filter by their store
-            if user.is_manager and user.store:
-                queryset = queryset.filter(
-                    Q(client__assigned_to__store=user.store) |
-                    Q(assigned_to__store=user.store)
-                )
-        else:
-            queryset = FollowUp.objects.none()
+        """Filter follow-ups by user scope"""
+        queryset = self.get_scoped_queryset(FollowUp, is_deleted=False)
         
         # Filter by status
         status_filter = self.request.query_params.get('status')
@@ -1166,18 +1147,12 @@ class FollowUpViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class TaskViewSet(viewsets.ModelViewSet):
+class TaskViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = TaskSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales', 'manager', 'business_admin'])]
 
     def get_queryset(self):
-        queryset = Task.objects.all()
-        user = self.request.user
-        if user.is_authenticated and user.tenant:
-            queryset = queryset.filter(tenant=user.tenant)
-        else:
-            queryset = Task.objects.none()
-        return queryset
+        return self.get_scoped_queryset(Task)
 
     def perform_create(self, serializer):
         user = self.request.user

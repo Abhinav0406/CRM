@@ -14,7 +14,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { 
@@ -162,6 +162,12 @@ export function Header({
     router.push('/login');
   };
 
+  const handleSidebarToggle = () => {
+    if (onSidebarToggle) {
+      onSidebarToggle();
+    }
+  };
+
   return (
     <header className={cn(
       'sticky top-0 z-40 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60',
@@ -171,19 +177,19 @@ export function Header({
       <div className="flex h-16 items-center justify-between px-6">
         {/* Left Section */}
         <div className="flex items-center space-x-4">
-          {/* Mobile Sidebar Toggle */}
-          {showSidebarToggle && (
-            <Button
-              id="sidebar-toggle"
-              variant="ghost"
-              size="icon"
-              onClick={onSidebarToggle}
-              className="lg:hidden"
-            >
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle sidebar</span>
-            </Button>
-          )}
+                     {/* Mobile Sidebar Toggle */}
+           {showSidebarToggle && (
+             <Button
+               id="sidebar-toggle"
+               variant="ghost"
+               size="icon"
+               onClick={handleSidebarToggle}
+                               className="lg:hidden"
+             >
+               <Menu className="h-5 w-5" />
+               <span className="sr-only">Toggle sidebar</span>
+             </Button>
+           )}
 
           {/* Search Bar */}
           <form onSubmit={handleSearch} className="relative">

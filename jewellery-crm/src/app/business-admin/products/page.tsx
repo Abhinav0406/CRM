@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2, X } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
 import { 
   DropdownMenu,
@@ -18,6 +18,8 @@ import AddProductModal from '@/components/products/AddProductModal';
 import CategoriesModal from '@/components/products/CategoriesModal';
 import ImportModal from '@/components/products/ImportModal';
 import ProductActionsModal from '@/components/products/ProductActionsModal';
+import ScopeIndicator from '@/components/ui/ScopeIndicator';
+import { useScopedVisibility } from '@/lib/scoped-visibility';
 
 interface Product {
   id: number;
@@ -41,7 +43,9 @@ interface Product {
   is_featured: boolean;
   is_bestseller: boolean;
   main_image?: string;
+  main_image_url?: string;
   additional_images: string[];
+  additional_images_urls?: string[];
   created_at: string;
   updated_at: string;
   is_in_stock?: boolean;
@@ -71,6 +75,11 @@ export default function ProductsPage() {
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedAction, setSelectedAction] = useState<'view' | 'edit' | 'delete' | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  
+  // Get user scope for scoped visibility
+  const { userScope, canAccessAllData, canAccessStoreData } = useScopedVisibility();
 
   useEffect(() => {
     fetchProducts();
@@ -80,11 +89,24 @@ export default function ProductsPage() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getProducts({
-        page: currentPage,
-        search: searchTerm || undefined,
-        category: categoryFilter === 'all' ? undefined : categoryFilter,
-      });
+      
+      // Use scoped endpoint based on user role
+      let response;
+      if (userScope.type === 'own') {
+        // For salespeople, use the "my" endpoint
+        response = await apiService.getMyProducts({
+          page: currentPage,
+          search: searchTerm || undefined,
+          category: categoryFilter === 'all' ? undefined : categoryFilter,
+        });
+      } else {
+        // For managers and admins, use the regular endpoint (backend middleware handles scoping)
+        response = await apiService.getProducts({
+          page: currentPage,
+          search: searchTerm || undefined,
+          category: categoryFilter === 'all' ? undefined : categoryFilter,
+        });
+      }
       
       if (response.success) {
         const data = response.data as any;
@@ -156,6 +178,30 @@ export default function ProductsPage() {
     setSelectedAction(null);
   };
 
+  const handleImageClick = (imageUrl: string) => {
+    setSelectedImage(imageUrl);
+    setImageModalOpen(true);
+  };
+
+  const closeImageModal = () => {
+    setImageModalOpen(false);
+    setSelectedImage(null);
+  };
+
+  // Add keyboard support for closing image modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && imageModalOpen) {
+        closeImageModal();
+      }
+    };
+
+    if (imageModalOpen) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [imageModalOpen]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -163,6 +209,9 @@ export default function ProductsPage() {
         <div>
           <h1 className="text-3xl font-bold text-text-primary tracking-tight">Products</h1>
           <p className="text-text-secondary mt-1">Manage your jewelry inventory and catalog</p>
+          <div className="mt-2">
+            <ScopeIndicator showDetails={false} />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button 
@@ -355,14 +404,29 @@ export default function ProductsPage() {
                   {products.map((product) => (
                     <tr key={product.id} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4">
-                        <div>
-                          <div className="font-medium text-text-primary">{product.name}</div>
-                          <div className="text-sm text-text-secondary">SKU: {product.sku}</div>
-                          {product.material && (
-                            <div className="text-xs text-text-secondary">
-                              {product.material} {product.color && `(${product.color})`}
+                        <div className="flex items-center space-x-3">
+                          {product.main_image_url ? (
+                            <img
+                              src={product.main_image_url}
+                              alt={product.name}
+                              title="Click to enlarge image"
+                              className="w-16 h-16 object-cover rounded-lg border hover:scale-105 transition-transform duration-200 cursor-pointer"
+                              onClick={() => handleImageClick(product.main_image_url!)}
+                            />
+                          ) : (
+                            <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                              <span className="text-gray-400 text-xs">No Image</span>
                             </div>
                           )}
+                          <div>
+                            <div className="font-medium text-text-primary">{product.name}</div>
+                            <div className="text-sm text-text-secondary">SKU: {product.sku}</div>
+                            {product.material && (
+                              <div className="text-xs text-text-secondary">
+                                {product.material} {product.color && `(${product.color})`}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -460,6 +524,33 @@ export default function ProductsPage() {
         product={selectedProduct}
         action={selectedAction}
       />
+
+      {/* Image Modal for Enlarged View */}
+      {imageModalOpen && selectedImage && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60]"
+          onClick={closeImageModal}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={closeImageModal}
+              className="absolute top-2 right-2 z-10 bg-white/20 hover:bg-white/30 text-white"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+            <img
+              src={selectedImage}
+              alt="Enlarged product image"
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

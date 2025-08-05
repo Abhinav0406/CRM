@@ -8,6 +8,8 @@ import { AddDealModal } from '@/components/pipeline/AddDealModal';
 import { DealDetailModal } from '@/components/pipeline/DealDetailModal';
 import { Plus, TrendingUp, Users, DollarSign, Calendar, Search, Filter, Eye } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useScopedVisibility } from '@/lib/scoped-visibility';
+import ScopeIndicator from '@/components/ui/ScopeIndicator';
 
 interface PipelineStats {
   totalValue: number;
@@ -25,6 +27,7 @@ interface PipelineStage {
 
 export default function SalesPipelinePage() {
   const { user } = useAuth();
+  const { userScope } = useScopedVisibility();
   const [pipelines, setPipelines] = useState<SalesPipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [addDealModalOpen, setAddDealModalOpen] = useState(false);
@@ -42,6 +45,7 @@ export default function SalesPipelinePage() {
   
   console.log('Current user:', user);
   console.log('User tenant:', user?.tenant);
+  console.log('User scope:', userScope);
 
   useEffect(() => {
     fetchPipelines();
@@ -55,7 +59,20 @@ export default function SalesPipelinePage() {
     try {
       setLoading(true);
       console.log('Fetching pipelines...');
-      const response = await apiService.getSalesPipeline();
+      console.log('Current user scope:', userScope);
+      
+      // Use scoped endpoint based on user role
+      let response;
+      if (userScope.type === 'own') {
+        // For salespeople, use the "my" endpoint
+        console.log('Using getMySalesPipeline for user scope:', userScope.type);
+        response = await apiService.getMySalesPipeline();
+      } else {
+        // For managers and admins, use the regular endpoint (backend middleware handles scoping)
+        console.log('Using getSalesPipeline for user scope:', userScope.type);
+        response = await apiService.getSalesPipeline();
+      }
+      
       console.log('Pipeline API response:', response);
       
       // Handle different response structures
@@ -75,6 +92,7 @@ export default function SalesPipelinePage() {
       
       console.log('Processed pipelines data:', pipelinesData);
       console.log('Number of pipelines:', pipelinesData.length);
+      console.log('Pipeline details:', pipelinesData.map(p => ({ id: p.id, title: p.title, sales_rep: p.sales_representative })));
       
       setPipelines(pipelinesData);
     } catch (error) {
@@ -178,6 +196,8 @@ export default function SalesPipelinePage() {
   };
 
   const handleViewDeal = (dealId: string) => {
+    console.log('Opening deal with ID:', dealId);
+    console.log('Available pipelines:', pipelines.map(p => ({ id: p.id, title: p.title, sales_rep: p.sales_representative })));
     setSelectedDealId(dealId);
     setDealDetailModalOpen(true);
   };
@@ -245,6 +265,9 @@ export default function SalesPipelinePage() {
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Sales Pipeline</h1>
           <p className="text-text-secondary mt-1">Manage your personal sales deals</p>
+          <div className="mt-2">
+            <ScopeIndicator showDetails={false} />
+          </div>
         </div>
         <Button className="btn-primary" onClick={handleAddDeal}>
           <Plus className="w-4 h-4 mr-2" />

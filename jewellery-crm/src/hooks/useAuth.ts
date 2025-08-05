@@ -27,6 +27,8 @@ export interface User {
   is_active: boolean;
   tenant?: number | null;
   store?: number;
+  tenant_name?: string;
+  store_name?: string;
 }
 
 interface AuthState {
@@ -61,7 +63,19 @@ export const useAuth = create<AuthState & AuthActions>()(
 
       login: async (username: string, password: string) => {
         try {
-          set({ isLoading: true, error: null });
+          // Clear any existing tokens before login attempt
+          set({ 
+            isLoading: true, 
+            error: null, 
+            token: null, 
+            refreshTokenString: null,
+            isAuthenticated: false 
+          });
+          
+          // Clear localStorage to remove any stale tokens
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth-storage');
+          }
           
           const response = await apiService.login(username, password);
           

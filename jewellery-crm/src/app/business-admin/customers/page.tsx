@@ -217,13 +217,7 @@ export default function CustomersPage() {
             <Download className="w-4 h-4" />
             Export
           </Button>
-          <Button 
-            onClick={() => setShowAddModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Customer
-          </Button>
+          
         </div>
       </div>
 

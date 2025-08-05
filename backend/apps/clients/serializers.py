@@ -50,6 +50,13 @@ class ClientSerializer(serializers.ModelSerializer):
         write_only=True,
         help_text="List of tag slugs to assign to the client"
     )
+    # Store field for store-based visibility
+    store = serializers.PrimaryKeyRelatedField(
+        queryset=Client._meta.get_field('store').related_model.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text="Store this customer belongs to"
+    )
 
     def validate_tag_slugs(self, value):
         """Validate that all tag slugs exist in the database"""
@@ -79,6 +86,8 @@ class ClientSerializer(serializers.ModelSerializer):
             'nextFollowUp', 'summaryNotes', 'assigned_to',
             'tags', 'tag_slugs',
             'catchment_area',
+            # Store field for store-based visibility
+            'store',
             # Soft delete fields
             'is_deleted', 'deleted_at',
         ]
@@ -147,6 +156,14 @@ class ClientSerializer(serializers.ModelSerializer):
                 )
                 validated_data['tenant'] = tenant
                 print(f"Created default tenant in create: {tenant}")
+            
+            # ALWAYS assign store in create method
+            store = request.user.store
+            if store:
+                validated_data['store'] = store
+                print(f"Assigned user's store in create: {store}")
+            else:
+                print("User has no store, store will be null")
         else:
             print("No authenticated user, creating default tenant in create")
             from apps.tenants.models import Tenant
@@ -156,6 +173,7 @@ class ClientSerializer(serializers.ModelSerializer):
             )
             validated_data['tenant'] = tenant
             print(f"Created default tenant for unauthenticated user in create: {tenant}")
+            # Store will be null for unauthenticated users
         
         print(f"Final validated data before save: {validated_data}")
         

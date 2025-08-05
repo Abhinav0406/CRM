@@ -7,7 +7,7 @@ import { Sale, Client, Appointment } from '@/lib/api-service';
 
 interface SalesStats {
   totalSales: number;
-  totalDeals: number;
+  totalDeals: number;  // This now represents total sales (including closed won pipelines)
   totalCustomers: number;
   conversionRate: number;
   monthlyRevenue: number;
@@ -42,47 +42,28 @@ export default function SalesDashboardPage() {
         setLoading(true);
         console.log('Starting to fetch dashboard data...');
         
-        // Fetch sales data
-        const salesResponse = await apiService.getSales();
-        console.log('Sales API response:', salesResponse);
+        // Fetch sales dashboard data (includes sales + closed won pipeline)
+        const dashboardResponse = await apiService.getSalesDashboard();
+        console.log('Sales Dashboard API response:', dashboardResponse);
         
-        // Handle different response structures
-        let sales: any[] = [];
-        if (salesResponse.data) {
-          if (Array.isArray(salesResponse.data)) {
-            sales = salesResponse.data;
-          } else if (typeof salesResponse.data === 'object' && 'results' in salesResponse.data) {
-            sales = (salesResponse.data as any).results;
-          } else if (typeof salesResponse.data === 'object' && 'data' in salesResponse.data) {
-            sales = (salesResponse.data as any).data;
-          } else {
-            sales = [salesResponse.data];
-          }
+        if (dashboardResponse.success && dashboardResponse.data) {
+          const dashboardData = dashboardResponse.data;
+          
+          setStats({
+            totalSales: dashboardData.sales_count || 0,
+            totalDeals: dashboardData.total_deals || 0,
+            totalCustomers: dashboardData.total_customers || 0,
+            conversionRate: dashboardData.conversion_rate || 0,
+            monthlyRevenue: dashboardData.monthly_revenue || 0,
+            pendingOrders: 0, // This would need to be calculated separately if needed
+          });
+          
+          console.log('Dashboard stats set:', dashboardData);
+        } else {
+          console.error('Failed to fetch dashboard data:', dashboardResponse);
         }
-        console.log('Processed sales data:', sales);
-        console.log('Sales count:', sales.length);
         
-        // Fetch customers data
-        const customersResponse = await apiService.getClients();
-        console.log('Customers API response:', customersResponse);
-        
-        // Handle different response structures
-        let customers: any[] = [];
-        if (customersResponse.data) {
-          if (Array.isArray(customersResponse.data)) {
-            customers = customersResponse.data;
-          } else if (typeof customersResponse.data === 'object' && 'results' in customersResponse.data) {
-            customers = (customersResponse.data as any).results;
-          } else if (typeof customersResponse.data === 'object' && 'data' in customersResponse.data) {
-            customers = (customersResponse.data as any).data;
-          } else {
-            customers = [customersResponse.data];
-          }
-        }
-        console.log('Processed customers data:', customers);
-        console.log('Customers count:', customers.length);
-        
-        // Fetch appointments data
+        // Fetch recent activities (appointments)
         const appointmentsResponse = await apiService.getAppointments();
         console.log('Appointments API response:', appointmentsResponse);
         
@@ -102,89 +83,13 @@ export default function SalesDashboardPage() {
         console.log('Processed appointments data:', appointments);
         console.log('Appointments count:', appointments.length);
 
-        // Calculate statistics with additional safety checks
-        console.log('Final processed data:', {
-          sales: sales,
-          salesType: typeof sales,
-          salesIsArray: Array.isArray(sales),
-          customers: customers,
-          customersType: typeof customers,
-          customersIsArray: Array.isArray(customers),
-          appointments: appointments,
-          appointmentsType: typeof appointments,
-          appointmentsIsArray: Array.isArray(appointments)
-        });
-
-        const totalSales = Array.isArray(sales) ? sales.length : 0;
-        const totalCustomers = Array.isArray(customers) ? customers.length : 0;
-        
-        let monthlyRevenue = 0;
-        if (Array.isArray(sales)) {
-          try {
-            monthlyRevenue = sales.reduce((sum, sale) => {
-              const amount = sale?.total_amount || 0;
-              return sum + amount;
-            }, 0);
-          } catch (error) {
-            console.error('Error calculating monthly revenue:', error);
-            monthlyRevenue = 0;
-          }
-        }
-        
-        let pendingOrders = 0;
-        if (Array.isArray(sales)) {
-          try {
-            pendingOrders = sales.filter(sale => sale?.status === 'pending').length;
-          } catch (error) {
-            console.error('Error calculating pending orders:', error);
-            pendingOrders = 0;
-          }
-        }
-        
-        const conversionRate = totalCustomers > 0 ? (totalSales / totalCustomers) * 100 : 0;
-
-        console.log('Calculated stats:', {
-          totalSales,
-          totalCustomers,
-          monthlyRevenue,
-          pendingOrders,
-          conversionRate
-        });
-
-        setStats({
-          totalSales,
-          totalDeals: sales.length,
-          totalCustomers,
-          conversionRate: Math.round(conversionRate * 100) / 100,
-          monthlyRevenue,
-          pendingOrders,
-        });
-
         // Prepare recent activities
         const activities: RecentActivity[] = [];
         
-        // Add recent sales
-        if (Array.isArray(sales)) {
-          try {
-            sales.slice(0, 5).forEach((sale: any) => {
-              activities.push({
-                id: sale?.id || 0,
-                type: 'sale',
-                title: `Sale #${sale?.order_number || 'N/A'}`,
-                description: `Order ${sale?.status || 'unknown'}`,
-                amount: sale?.total_amount || 0,
-                date: sale?.created_at || new Date().toISOString(),
-              });
-            });
-          } catch (error) {
-            console.error('Error processing sales for activities:', error);
-          }
-        }
-
         // Add recent appointments
         if (Array.isArray(appointments)) {
           try {
-            appointments.slice(0, 3).forEach((appointment: any) => {
+            appointments.slice(0, 8).forEach((appointment: any) => {
               activities.push({
                 id: appointment?.id || 0,
                 type: 'appointment',
@@ -279,7 +184,7 @@ export default function SalesDashboardPage() {
           </div>
           <div>
             <div className="text-xl font-bold text-text-primary">{stats.totalDeals}</div>
-            <div className="text-sm text-text-secondary font-medium">Total Deals</div>
+            <div className="text-sm text-text-secondary font-medium">Total Sales</div>
           </div>
         </Card>
         

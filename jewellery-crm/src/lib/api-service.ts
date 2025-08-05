@@ -32,6 +32,7 @@ interface Client {
   id: number;
   first_name: string;
   last_name: string;
+  full_name?: string;
   email: string;
   phone?: string;
   customer_type: string;
@@ -60,6 +61,7 @@ interface Client {
   summary_notes?: string;
   customer_interests: string[];
   tenant?: number;
+  store?: number;
   tags: number[];
   created_at: string;
   updated_at: string;
@@ -282,9 +284,14 @@ class ApiService {
     const token = this.getAuthToken();
     console.log('API Request:', { url, hasToken: !!token, token: token ? `${token.substring(0, 10)}...` : null });
     
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
+    // Check if the request body is FormData
+    const isFormData = options.body instanceof FormData;
+    
+    const defaultHeaders: Record<string, string> = {
+      // Only set Content-Type for JSON requests, let browser set it for FormData
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      // Only include Authorization header for non-login requests
+      ...(token && !endpoint.includes('/auth/login/') && { 'Authorization': `Bearer ${token}` }),
     };
 
     const config: RequestInit = {
@@ -298,11 +305,15 @@ class ApiService {
     // Log the request body if it exists
     if (options.body) {
       console.log('API Request body:', options.body);
-      try {
-        const bodyObj = JSON.parse(options.body as string);
-        console.log('API Request body parsed:', bodyObj);
-      } catch (e) {
-        console.log('API Request body is not JSON:', options.body);
+      if (!isFormData) {
+        try {
+          const bodyObj = JSON.parse(options.body as string);
+          console.log('API Request body parsed:', bodyObj);
+        } catch (e) {
+          console.log('API Request body is not JSON:', options.body);
+        }
+      } else {
+        console.log('API Request body is FormData');
       }
     }
 
@@ -321,21 +332,42 @@ class ApiService {
         });
         
         // Try to get the error response body
+        let errorMessage = `API Error: ${response.status} ${response.statusText}`;
         try {
           const errorBody = await response.text();
           console.error('API Error Response body:', errorBody);
+          
+          // Try to parse the error body as JSON
+          try {
+            const errorData = JSON.parse(errorBody);
+            if (errorData.error) {
+              errorMessage = errorData.error;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.detail) {
+              errorMessage = errorData.detail;
+            } else if (errorData.messages && errorData.messages.length > 0) {
+              errorMessage = errorData.messages[0].message;
+            }
+          } catch (parseError) {
+            // If it's not JSON, use the raw text
+            if (errorBody.trim()) {
+              errorMessage = errorBody;
+            }
+          }
         } catch (e) {
           console.error('Could not read error response body');
         }
         
-        if (response.status === 401) {
+        // Only redirect for 401 errors that are NOT login attempts
+        if (response.status === 401 && !url.includes('/auth/login/')) {
           // Token expired or invalid, redirect to login
           if (typeof window !== 'undefined') {
             localStorage.removeItem('auth-storage');
             window.location.href = '/login';
           }
         }
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        throw new Error(errorMessage);
       }
 
       // Check if response is a file download
@@ -486,6 +518,14 @@ class ApiService {
     return this.request('/tenants/platform-dashboard/');
   }
 
+  async getManagerDashboard(): Promise<ApiResponse<any>> {
+    return this.request('/tenants/manager-dashboard/');
+  }
+
+  async getSalesDashboard(): Promise<ApiResponse<any>> {
+    return this.request('/sales/dashboard/');
+  }
+
   // Clients (Customers) API
   async getClients(params?: {
     page?: number;
@@ -583,17 +623,27 @@ class ApiService {
     return this.request(`/products/${id}/`);
   }
 
-  async createProduct(productData: Partial<Product>): Promise<ApiResponse<Product>> {
+  async createProduct(productData: Partial<Product> | FormData): Promise<ApiResponse<Product>> {
+    const isFormData = productData instanceof FormData;
+    
     return this.request('/products/create/', {
       method: 'POST',
-      body: JSON.stringify(productData),
+      body: isFormData ? productData : JSON.stringify(productData),
+      headers: isFormData ? {
+        // Don't set Content-Type for FormData, let the browser set it
+      } : undefined,
     });
   }
 
-  async updateProduct(id: string, productData: Partial<Product>): Promise<ApiResponse<Product>> {
+  async updateProduct(id: string, productData: Partial<Product> | FormData): Promise<ApiResponse<Product>> {
+    const isFormData = productData instanceof FormData;
+    
     return this.request(`/products/${id}/update/`, {
       method: 'PUT',
-      body: JSON.stringify(productData),
+      body: isFormData ? productData : JSON.stringify(productData),
+      headers: isFormData ? {
+        // Don't set Content-Type for FormData, let the browser set it
+      } : undefined,
     });
   }
 
@@ -654,7 +704,7 @@ class ApiService {
     if (params?.date_from) queryParams.append('date_from', params.date_from);
     if (params?.date_to) queryParams.append('date_to', params.date_to);
 
-    return this.request(`/sales/${queryParams.toString() ? `?${queryParams}` : ''}`);
+    return this.request(`/sales/list/${queryParams.toString() ? `?${queryParams}` : ''}`);
   }
 
   async getSale(id: string): Promise<ApiResponse<Sale>> {
@@ -689,6 +739,24 @@ class ApiService {
     const response = await this.request<SalesPipeline[]>(`/sales/pipeline/${queryParams.toString() ? `?${queryParams}` : ''}`);
     console.log('getSalesPipeline response:', response);
     return response;
+  }
+
+  // My Sales Pipeline (for salespeople to see only their own pipeline)
+  async getMySalesPipeline(params?: {
+    page?: number;
+    stage?: string;
+  }): Promise<ApiResponse<SalesPipeline[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.stage) queryParams.append('stage', params.stage);
+
+    const response = await this.request<SalesPipeline[]>(`/sales/pipeline/my/${queryParams.toString() ? `?${queryParams}` : ''}`);
+    console.log('getMySalesPipeline response:', response);
+    return response;
+  }
+
+  async getMyPipeline(id: string): Promise<ApiResponse<SalesPipeline>> {
+    return this.request(`/sales/pipeline/my/${id}/`);
   }
 
   async createSalesPipeline(pipelineData: Partial<SalesPipeline>): Promise<ApiResponse<SalesPipeline>> {

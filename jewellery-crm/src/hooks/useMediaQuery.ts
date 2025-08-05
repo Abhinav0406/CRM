@@ -86,17 +86,17 @@ export function useMediaQuery(query: string): boolean {
  */
 
 /**
- * Hook to detect mobile screens (< 640px)
+ * Hook to detect mobile screens (< 768px)
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery('(max-width: 639px)');
+  return useMediaQuery('(max-width: 767px)');
 }
 
 /**
- * Hook to detect tablet screens (640px - 767px)
+ * Hook to detect tablet screens (768px - 1023px)
  */
 export function useIsTablet(): boolean {
-  return useMediaQuery('(min-width: 640px) and (max-width: 767px)');
+  return useMediaQuery('(min-width: 768px) and (max-width: 1023px)');
 }
 
 /**

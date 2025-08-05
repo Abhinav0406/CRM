@@ -162,18 +162,32 @@ export default function PipelinePage() {
       return `Client ${client}`;
     }
     
-    // Handle case where client is an object but properties are undefined
-    if (client.full_name) {
-      return client.full_name;
-    }
-    if (client.first_name && client.last_name) {
-      return `${client.first_name} ${client.last_name}`;
-    }
-    if (client.first_name) {
-      return client.first_name;
-    }
-    if (client.id) {
-      return `Client ${client.id}`;
+    // Handle case where client is an object
+    if (client && typeof client === 'object') {
+      // Check for full_name first (this is what the backend returns)
+      if (client.full_name && client.full_name.trim()) {
+        return client.full_name.trim();
+      }
+      
+      // Fallback to first_name + last_name
+      if (client.first_name && client.last_name) {
+        return `${client.first_name} ${client.last_name}`.trim();
+      }
+      
+      // Fallback to just first_name
+      if (client.first_name) {
+        return client.first_name.trim();
+      }
+      
+      // Fallback to just last_name
+      if (client.last_name) {
+        return client.last_name.trim();
+      }
+      
+      // Last resort - use ID
+      if (client.id) {
+        return `Client ${client.id}`;
+      }
     }
     
     // If we get here, log the client object for debugging
@@ -291,19 +305,28 @@ export default function PipelinePage() {
               <CardContent className="pt-0">
                 <div className="space-y-3">
                   {stageDeals.map((deal) => (
-                    <div key={deal.id} className="border rounded-lg p-3 hover:shadow-md transition-shadow">
+                    <div key={deal.id} className={`border rounded-lg p-3 hover:shadow-md transition-shadow ${
+                      deal.stage === 'closed_won' ? 'bg-green-50 border-green-200' : ''
+                    }`}>
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-medium text-sm text-text-primary">{deal.title}</h4>
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-3 h-3" />
-                        </Button>
-                      </div>
-                                              <div className="space-y-1 text-xs text-text-secondary">
-                          <p>Client: {getClientDisplay(deal.client)}</p>
-                          <p>{formatCurrency(deal.expected_value)}</p>
-                          <p>Probability: {deal.probability}%</p>
-                          <p>Expected: {safeFormatDate(deal.expected_close_date)}</p>
+                        <div className="flex items-center gap-1">
+                          {deal.stage === 'closed_won' && (
+                            <span className="text-green-600 text-xs">🎉</span>
+                          )}
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="w-3 h-3" />
+                          </Button>
                         </div>
+                      </div>
+                      <div className="space-y-1 text-xs text-text-secondary">
+                        <p>Client: {getClientDisplay(deal.client)}</p>
+                        <p className={deal.stage === 'closed_won' ? 'font-medium text-green-700' : ''}>
+                          {formatCurrency(deal.expected_value)}
+                        </p>
+                        <p>Probability: {deal.probability}%</p>
+                        <p>Expected: {safeFormatDate(deal.expected_close_date)}</p>
+                      </div>
                     </div>
                   ))}
                   {stageDeals.length === 0 && (

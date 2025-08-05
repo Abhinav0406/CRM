@@ -98,14 +98,12 @@ const navigationItems: NavItem[] = [
     title: 'Sales Pipeline',
     href: '/business-admin/pipeline',
     icon: TrendingUp,
-    badge: 12,
     roles: ['business_admin'],
   },
   {
     title: 'Appointments',
     href: '/business-admin/appointments',
     icon: Calendar,
-    badge: 3,
     roles: ['business_admin'],
   },
   {
@@ -118,13 +116,6 @@ const navigationItems: NavItem[] = [
     title: 'Orders',
     href: '/business-admin/orders',
     icon: ShoppingBag,
-    badge: 5,
-    roles: ['business_admin'],
-  },
-  {
-    title: 'E-commerce',
-    href: '/business-admin/ecommerce',
-    icon: Globe,
     roles: ['business_admin'],
   },
   {
@@ -140,12 +131,6 @@ const navigationItems: NavItem[] = [
     roles: ['business_admin'],
   },
   {
-    title: 'WhatsApp',
-    href: '/business-admin/whatsapp',
-    icon: MessageSquare,
-    roles: ['business_admin'],
-  },
-  {
     title: 'Support',
     href: '/business-admin/support',
     icon: MessageSquare,
@@ -158,12 +143,6 @@ const navigationItems: NavItem[] = [
         roles: ['business_admin'],
       },
     ],
-  },
-  {
-    title: 'Payments',
-    href: '/business-admin/payments',
-    icon: CreditCard,
-    roles: ['business_admin'],
   },
   {
     title: 'Settings',
@@ -183,12 +162,12 @@ const navigationItems: NavItem[] = [
         icon: Building2,
         roles: ['business_admin'],
       },
-      {
-        title: 'Integrations',
-        href: '/business-admin/settings/integrations',
-        icon: Globe,
-        roles: ['business_admin'],
-      },
+      //{
+      //  title: 'Integrations',
+      //  href: '/business-admin/settings/integrations',
+      //  icon: Globe,
+      //  roles: ['business_admin'],
+      //},
     ],
   },
   // Platform Admin Navigation (unchanged)
@@ -522,15 +501,15 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
     if (!canAccessItem(item)) return null;
 
     const itemClasses = cn(
-      'flex items-center justify-between w-full px-3 py-2.5 text-sm font-medium rounded-md transition-all duration-200',
+      'flex items-center justify-between w-full px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200',
       'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-      level > 0 && 'ml-4 px-2 py-2',
+      level > 0 && 'ml-4 px-3 py-2.5',
       isActive && 'bg-primary text-primary-foreground shadow-sm',
       !isActive && 'text-sidebar-foreground'
     );
 
     const iconClasses = cn(
-      'mr-3 h-5 w-5 flex-shrink-0',
+      'mr-3 h-5 w-5 flex-shrink-0 transition-colors duration-200',
       level > 0 && 'h-4 w-4 mr-2'
     );
 
@@ -552,7 +531,7 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
             </div>
             <ChevronDown 
               className={cn(
-                'h-4 w-4 transition-transform duration-200',
+                'h-4 w-4 transition-transform duration-300 ease-in-out',
                 isExpanded && 'rotate-180'
               )} 
             />
@@ -590,7 +569,7 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
     <div
       id="app-sidebar"
       className={cn(
-        'w-60 bg-sidebar text-sidebar-foreground fixed h-screen overflow-y-auto z-50 flex flex-col',
+        'w-60 bg-sidebar text-sidebar-foreground h-full overflow-y-auto flex flex-col',
         !isOpen && 'transform -translate-x-full lg:translate-x-0',
         className
       )}
@@ -613,19 +592,19 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-4 space-y-2">
+      <nav className="flex-1 px-4 py-4 space-y-1">
         {navigationItems.map((item) => (
           <NavItemComponent key={item.href} item={item} />
         ))}
       </nav>
 
       {/* User Profile Section */}
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border bg-sidebar/50">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="w-full justify-start px-3 py-2 h-auto text-sidebar-foreground hover:bg-sidebar-accent"
+              className="w-full justify-start px-3 py-3 h-auto text-sidebar-foreground hover:bg-sidebar-accent rounded-lg transition-colors duration-200"
             >
               <Avatar className="w-8 h-8 mr-3">
                 <AvatarImage src={undefined} />
@@ -646,7 +625,7 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
           
           <DropdownMenuContent 
             align="end" 
-            className="w-56 bg-card border-border"
+            className="w-56 bg-card border-border shadow-xl"
           >
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />

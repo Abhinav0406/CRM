@@ -24,19 +24,20 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
     
     def get_current_price(self, obj):
-        return obj.current_price
+        return obj.selling_price if obj.selling_price else obj.product.selling_price
     
     def get_is_in_stock(self, obj):
-        return obj.is_in_stock
+        return obj.quantity > 0
 
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    additional_images_urls = serializers.SerializerMethodField()
     is_in_stock = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     current_price = serializers.SerializerMethodField()
     profit_margin = serializers.SerializerMethodField()
-    variants = ProductVariantSerializer(many=True, read_only=True)
     variant_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -44,48 +45,127 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['tenant', 'created_at', 'updated_at']
     
+    def get_main_image_url(self, obj):
+        if obj.main_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.main_image.url)
+            return obj.main_image.url
+        return None
+    
+    def get_additional_images_urls(self, obj):
+        if obj.additional_images:
+            request = self.context.get('request')
+            urls = []
+            for image_path in obj.additional_images:
+                if request:
+                    urls.append(request.build_absolute_uri(image_path))
+                else:
+                    urls.append(image_path)
+            return urls
+        return []
+    
     def get_is_in_stock(self, obj):
-        return obj.is_in_stock
+        return obj.quantity > 0
     
     def get_is_low_stock(self, obj):
-        return obj.is_low_stock
+        return obj.quantity <= obj.min_quantity
     
     def get_current_price(self, obj):
-        return obj.current_price
+        return obj.discount_price if obj.discount_price else obj.selling_price
     
     def get_profit_margin(self, obj):
-        return obj.profit_margin
+        if obj.cost_price and obj.selling_price:
+            return ((obj.selling_price - obj.cost_price) / obj.selling_price) * 100
+        return 0
+    
+    def get_variant_count(self, obj):
+        return obj.variants.count()
+    
+    def create(self, validated_data):
+        # Handle file uploads
+        main_image = self.context['request'].FILES.get('main_image')
+        additional_images = self.context['request'].FILES.getlist('additional_images')
+        
+        if main_image:
+            validated_data['main_image'] = main_image
+        
+        if additional_images:
+            # Convert to list of file paths
+            image_paths = []
+            for image in additional_images:
+                # Save the image and get the path
+                image_paths.append(image.name)
+            validated_data['additional_images'] = image_paths
+        
+        return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        # Handle file uploads
+        main_image = self.context['request'].FILES.get('main_image')
+        additional_images = self.context['request'].FILES.getlist('additional_images')
+        
+        if main_image:
+            validated_data['main_image'] = main_image
+        
+        if additional_images:
+            # Convert to list of file paths
+            image_paths = []
+            for image in additional_images:
+                # Save the image and get the path
+                image_paths.append(image.name)
+            validated_data['additional_images'] = image_paths
+        
+        return super().update(instance, validated_data)
+
+
+class ProductListSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    is_in_stock = serializers.SerializerMethodField()
+    is_low_stock = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    profit_margin = serializers.SerializerMethodField()
+    variant_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = [
+            'id', 'name', 'sku', 'description', 'category', 'category_name',
+            'brand', 'cost_price', 'selling_price', 'discount_price',
+            'quantity', 'min_quantity', 'max_quantity', 'weight',
+            'dimensions', 'material', 'color', 'size', 'status',
+            'is_featured', 'is_bestseller', 'main_image_url',
+            'is_in_stock', 'is_low_stock', 'current_price',
+            'profit_margin', 'variant_count', 'created_at', 'updated_at'
+        ]
+    
+    def get_main_image_url(self, obj):
+        if obj.main_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.main_image.url)
+            return obj.main_image.url
+        return None
+    
+    def get_is_in_stock(self, obj):
+        return obj.quantity > 0
+    
+    def get_is_low_stock(self, obj):
+        return obj.quantity <= obj.min_quantity
+    
+    def get_current_price(self, obj):
+        return obj.discount_price if obj.discount_price else obj.selling_price
+    
+    def get_profit_margin(self, obj):
+        if obj.cost_price and obj.selling_price:
+            return ((obj.selling_price - obj.cost_price) / obj.selling_price) * 100
+        return 0
     
     def get_variant_count(self, obj):
         return obj.variants.count()
 
 
 class ProductDetailSerializer(ProductSerializer):
-    """Extended serializer for detailed product views"""
-    category_details = CategorySerializer(source='category', read_only=True)
-    
     class Meta(ProductSerializer.Meta):
-        fields = '__all__'
-
-
-class ProductListSerializer(serializers.ModelSerializer):
-    """Simplified serializer for product lists"""
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    category = serializers.PrimaryKeyRelatedField(read_only=True)
-    is_in_stock = serializers.SerializerMethodField()
-    current_price = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Product
-        fields = [
-            'id', 'name', 'sku', 'category', 'category_name', 'selling_price', 
-            'current_price', 'quantity', 'status', 'is_in_stock', 
-            'is_featured', 'is_bestseller', 'created_at'
-        ]
-        read_only_fields = ['tenant', 'created_at', 'updated_at']
-    
-    def get_is_in_stock(self, obj):
-        return obj.is_in_stock
-    
-    def get_current_price(self, obj):
-        return obj.current_price
+        fields = list(ProductSerializer.Meta.fields) + ['additional_images_urls']

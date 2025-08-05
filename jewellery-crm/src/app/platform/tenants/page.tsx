@@ -107,14 +107,6 @@ export default function TenantsListPage() {
     setTenantToDelete(null);
   };
 
-  // Filter and search tenants
-  const filteredTenants = tenants.filter(tenant => {
-    const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         tenant.business_type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || tenant.subscription_status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -123,8 +115,6 @@ export default function TenantsListPage() {
         return 'bg-gray-100 text-gray-800 border-gray-200';
       case 'suspended':
         return 'bg-red-100 text-red-800 border-red-200';
-      case 'cancelled':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -134,18 +124,24 @@ export default function TenantsListPage() {
     switch (type) {
       case 'jewelry_store':
         return '💍';
-      case 'goldsmith':
-        return '⚒️';
-      case 'diamond_merchant':
-        return '💎';
-      case 'silver_merchant':
-        return '🥈';
-      case 'jewelry_wholesaler':
+      case 'retail':
+        return '🛍️';
+      case 'wholesale':
         return '📦';
+      case 'manufacturing':
+        return '🏭';
       default:
         return '🏢';
     }
   };
+
+  // Filter tenants based on search and status
+  const filteredTenants = tenants.filter(tenant => {
+    const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         tenant.business_type.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || tenant.subscription_status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   if (loading) {
     return (
@@ -154,9 +150,10 @@ export default function TenantsListPage() {
         subtitle="Manage tenant organizations across the platform"
         actions={
           <Link href="/platform/tenants/new">
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
-              New Tenant
+              <span className="hidden sm:inline">New Tenant</span>
+              <span className="sm:hidden">Add</span>
             </Button>
           </Link>
         }
@@ -178,9 +175,10 @@ export default function TenantsListPage() {
         subtitle="Manage tenant organizations across the platform"
         actions={
           <Link href="/platform/tenants/new">
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
-              New Tenant
+              <span className="hidden sm:inline">New Tenant</span>
+              <span className="sm:hidden">Add</span>
             </Button>
           </Link>
         }
@@ -212,9 +210,10 @@ export default function TenantsListPage() {
         subtitle="Manage tenant organizations across the platform"
         actions={
           <Link href="/platform/tenants/new">
-            <Button>
+            <Button className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
-              New Tenant
+              <span className="hidden sm:inline">New Tenant</span>
+              <span className="sm:hidden">Add</span>
             </Button>
           </Link>
         }
@@ -245,17 +244,18 @@ export default function TenantsListPage() {
       subtitle="Manage tenant organizations across the platform"
       actions={
         <Link href="/platform/tenants/new">
-          <Button>
+          <Button className="w-full sm:w-auto">
             <Plus className="w-4 h-4 mr-2" />
-            New Tenant
+            <span className="hidden sm:inline">New Tenant</span>
+            <span className="sm:hidden">Add</span>
           </Button>
         </Link>
       }
     >
       {/* Search and Filters */}
       <CardContainer>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-col gap-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search tenants by name or business type..."
@@ -264,11 +264,12 @@ export default function TenantsListPage() {
               className="pl-10"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={filterStatus === 'all' ? 'default' : 'outline'}
               onClick={() => setFilterStatus('all')}
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               All
             </Button>
@@ -276,6 +277,7 @@ export default function TenantsListPage() {
               variant={filterStatus === 'active' ? 'default' : 'outline'}
               onClick={() => setFilterStatus('active')}
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               Active
             </Button>
@@ -283,6 +285,7 @@ export default function TenantsListPage() {
               variant={filterStatus === 'inactive' ? 'default' : 'outline'}
               onClick={() => setFilterStatus('inactive')}
               size="sm"
+              className="flex-1 sm:flex-none"
             >
               Inactive
             </Button>
@@ -290,9 +293,10 @@ export default function TenantsListPage() {
         </div>
       </CardContainer>
 
-      {/* Tenants Table */}
+      {/* Tenants List - Mobile Responsive */}
       <CardContainer>
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">
@@ -359,6 +363,63 @@ export default function TenantsListPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="lg:hidden space-y-4">
+          {filteredTenants.map((tenant) => (
+            <Card key={tenant.id} className="p-4">
+              <div className="space-y-3">
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">
+                      {getBusinessTypeIcon(tenant.business_type)}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-foreground truncate">{tenant.name}</h3>
+                      <p className="text-sm text-muted-foreground capitalize">
+                        {tenant.business_type.replace('_', ' ')}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge className={`${getStatusColor(tenant.subscription_status)} border`}>
+                    {tenant.subscription_status.charAt(0).toUpperCase() + tenant.subscription_status.slice(1)}
+                  </Badge>
+                </div>
+
+                {/* Details */}
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="flex items-center text-muted-foreground">
+                    <Users className="w-4 h-4 mr-2" />
+                    <span>{tenant.users?.length || 0} users</span>
+                  </div>
+                  <div className="flex items-center text-muted-foreground">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    <span>{new Date(tenant.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center space-x-2 pt-2 border-t">
+                  <Link href={`/platform/tenants/${tenant.id}`} className="flex-1">
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Eye className="w-4 h-4 mr-2" />
+                      View Details
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDeleteClick(tenant)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
 
         {/* No Results */}

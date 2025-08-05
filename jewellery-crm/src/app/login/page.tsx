@@ -10,69 +10,64 @@ import { useAuth } from '@/hooks/useAuth';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, error, user } = useAuth();
+  const { login, isLoading, error, user, setError } = useAuth();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
 
+
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setError(null); // Clear any previous errors from the auth hook
     
     if (!username || !password) {
       setLoginError('Please enter both username and password');
       return;
     }
 
-    const success = await login(username, password);
-    console.log('Login success:', success);
-    
-    if (success) {
-      // Get the current user state after login
-      const currentUser = useAuth.getState().user;
-      console.log('Current user state after login:', currentUser);
+    try {
+      const success = await login(username, password);
       
-      if (currentUser) {
-        console.log('User role from state:', currentUser.role);
-        // Redirect based on user role from backend
-        switch (currentUser.role) {
-          case 'platform_admin':
-            console.log('Redirecting to platform dashboard');
-            router.push('/platform/dashboard');
-            break;
-          case 'business_admin':
-            console.log('Redirecting to business admin dashboard');
-            router.push('/business-admin/dashboard');
-            break;
-          case 'manager':
-            console.log('Redirecting to manager dashboard');
-            router.push('/manager/dashboard');
-            break;
-          case 'sales_team':
-          case 'inhouse_sales':
-            console.log('Redirecting to sales dashboard');
-            router.push('/sales/dashboard');
-            break;
-          case 'marketing':
-            console.log('Redirecting to marketing dashboard');
-            router.push('/marketing/dashboard');
-            break;
-          case 'tele_calling':
-            console.log('Redirecting to telecaller dashboard');
-            router.push('/telecaller/dashboard');
-            break;
-          default:
-            console.log('Unknown role:', currentUser.role, 'redirecting to sales dashboard');
-            router.push('/sales/dashboard');
+      if (success) {
+        // Get the current user state after login
+        const currentUser = useAuth.getState().user;
+        
+        if (currentUser) {
+          // Redirect based on user role from backend
+          switch (currentUser.role) {
+            case 'platform_admin':
+              router.push('/platform/dashboard');
+              break;
+            case 'business_admin':
+              router.push('/business-admin/dashboard');
+              break;
+            case 'manager':
+              router.push('/manager/dashboard');
+              break;
+            case 'sales_team':
+            case 'inhouse_sales':
+              router.push('/sales/dashboard');
+              break;
+            case 'marketing':
+              router.push('/marketing/dashboard');
+              break;
+            case 'tele_calling':
+              router.push('/telecaller/dashboard');
+              break;
+            default:
+              router.push('/sales/dashboard');
+          }
+        } else {
+          router.push('/sales/dashboard');
         }
-      } else {
-        console.log('No user data, redirecting to sales dashboard');
-        router.push('/sales/dashboard');
       }
-    } else {
-      setLoginError('Invalid username or password. Please check your credentials.');
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('An unexpected error occurred. Please try again.');
     }
   };
 
@@ -139,8 +134,19 @@ export default function LoginPage() {
               </div>
 
               {(loginError || error) && (
-                <div className="text-red-600 text-sm bg-red-50 p-3 rounded-md">
-                  {loginError || error}
+                <div className="text-red-600 text-sm bg-red-50 border border-red-200 p-4 rounded-md">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-red-800">
+                        {loginError || error}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -157,20 +163,6 @@ export default function LoginPage() {
               <p className="text-xs text-gray-500">
                 Need help? Contact your system administrator
               </p>
-              
-              {/* Demo Login Button */}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full text-sm"
-                onClick={() => {
-                  setUsername('rara');
-                  setPassword('password123');
-                }}
-                disabled={isLoading}
-              >
-                Use Demo Credentials (rara / password123)
-              </Button>
             </div>
           </CardContent>
         </Card>

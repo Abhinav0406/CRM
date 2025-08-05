@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "lucide-react";
 import { apiService } from "@/lib/api-service";
+import { Badge } from "@/components/ui/badge";
 
 interface AddCustomerModalProps {
   open: boolean;
@@ -63,6 +64,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
   // State for sales pipeline
   const [showPipelineSection, setShowPipelineSection] = useState(false);
   const [pipelineOpportunities, setPipelineOpportunities] = useState<any[]>([]);
+  const [showDesignSelectedNotification, setShowDesignSelectedNotification] = useState(false);
 
   const addInterest = () => {
     setInterests([
@@ -106,30 +108,59 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
 
   const handleSubmit = async () => {
     try {
+      // Validate required fields
+      if (!formData.fullName.trim()) {
+        alert('Please enter the customer\'s full name.');
+        return;
+      }
+      
+      if (!formData.phone.trim()) {
+        alert('Please enter the customer\'s phone number.');
+        return;
+      }
+      
       console.log('Submitting customer data:', { formData, interests });
+      
+      // Format dates properly for API
+      const formatDateForAPI = (dateString: string) => {
+        if (!dateString) return undefined;
+        try {
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return undefined;
+          return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD format
+        } catch (error) {
+          console.warn('Invalid date format:', dateString);
+          return undefined;
+        }
+      };
+      
+      // Clean string fields - remove empty strings
+      const cleanStringField = (value: string) => {
+        return value && value.trim() ? value.trim() : undefined;
+      };
       
       // Prepare customer data
       const customerData = {
         first_name: formData.fullName.split(' ')[0] || formData.fullName,
         last_name: formData.fullName.split(' ').slice(1).join(' ') || '',
-        email: formData.email,
+        email: cleanStringField(formData.email),
         phone: formData.phone,
-        address: formData.streetAddress,
-        city: formData.city,
-        state: formData.state,
+        address: cleanStringField(formData.streetAddress),
+        city: cleanStringField(formData.city),
+        state: cleanStringField(formData.state),
         country: formData.country,
-        date_of_birth: formData.birthDate,
-        anniversary_date: formData.anniversaryDate,
-        community: formData.community,
-        mother_tongue: formData.motherTongue,
-        reason_for_visit: formData.reasonForVisit,
-        lead_source: formData.leadSource,
-        age_of_end_user: formData.ageOfEndUser,
-        saving_scheme: formData.savingScheme,
-        catchment_area: formData.catchmentArea,
-        next_follow_up: formData.nextFollowUpDate,
+        date_of_birth: formatDateForAPI(formData.birthDate),
+        anniversary_date: formatDateForAPI(formData.anniversaryDate),
+        community: cleanStringField(formData.community),
+        mother_tongue: cleanStringField(formData.motherTongue),
+        reason_for_visit: cleanStringField(formData.reasonForVisit),
+        lead_source: cleanStringField(formData.leadSource),
+        age_of_end_user: cleanStringField(formData.ageOfEndUser),
+        saving_scheme: cleanStringField(formData.savingScheme),
+        catchment_area: cleanStringField(formData.catchmentArea),
+        next_follow_up: formatDateForAPI(formData.nextFollowUpDate),
         next_follow_up_time: formData.nextFollowUpTime,
-        summary_notes: formData.summaryNotes,
+        summary_notes: cleanStringField(formData.summaryNotes),
         customer_interests: interests.map(interest => JSON.stringify({
           category: interest.mainCategory,
           products: interest.products,
@@ -137,10 +168,25 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         }))
       };
 
-      console.log('Sending customer data to API:', customerData);
+      // Remove undefined values to avoid sending them to API
+      const cleanedCustomerData = Object.fromEntries(
+        Object.entries(customerData).filter(([_, value]) => value !== undefined)
+      );
+
+      console.log('Sending customer data to API:', cleanedCustomerData);
+      
+      // Debug: Log the specific date fields
+      console.log('Date fields debug:', {
+        birthDate: formData.birthDate,
+        anniversaryDate: formData.anniversaryDate,
+        nextFollowUpDate: formData.nextFollowUpDate,
+        formattedBirthDate: formatDateForAPI(formData.birthDate),
+        formattedAnniversaryDate: formatDateForAPI(formData.anniversaryDate),
+        formattedNextFollowUp: formatDateForAPI(formData.nextFollowUpDate)
+      });
       
       // Call API to create customer
-      const response = await apiService.createClient(customerData);
+      const response = await apiService.createClient(cleanedCustomerData);
       
       if (response.success) {
         console.log('Customer created successfully:', response.data);
@@ -195,6 +241,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         }]);
         setPipelineOpportunities([]);
         setShowPipelineSection(false);
+        setShowDesignSelectedNotification(false);
       } else {
         console.error('Failed to create customer:', response);
         alert('Failed to add customer. Please try again.');
@@ -212,7 +259,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
           title: opportunity.title,
           client_id: customerId, // Changed from client to client_id
           sales_representative: 1, // Default to current user
-          stage: 'lead',
+          stage: opportunity.stage,
           probability: opportunity.probability,
           expected_value: opportunity.expected_value,
           notes: opportunity.notes,
@@ -248,12 +295,17 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
             cat.id?.toString() === interest.mainCategory || cat.name === interest.mainCategory
           )?.name || `Category ${interest.mainCategory}`;
           
+          // Check if design is selected to determine stage
+          const stage = interest.preferences.designSelected ? 'closed_won' : 'lead';
+          const probability = interest.preferences.designSelected ? 100 : 50;
+          
           opportunities.push({
             title: `${formData.fullName} - ${categoryName} Opportunity`,
-            probability: 50, // Default probability
+            probability: probability,
             expected_value: totalRevenue,
-            notes: `Generated from customer interest in ${categoryName}. Products: ${interest.products.map(p => p.product).join(', ')}`,
-            next_action: 'Follow up with customer',
+            stage: stage,
+            notes: `Generated from customer interest in ${categoryName}. Products: ${interest.products.map(p => p.product).join(', ')}${interest.preferences.designSelected ? ' - Design Selected!' : ''}`,
+            next_action: interest.preferences.designSelected ? 'Process order' : 'Follow up with customer',
             next_action_date: formData.nextFollowUpDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
           });
         }
@@ -263,6 +315,13 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
     setPipelineOpportunities(opportunities);
     setShowPipelineSection(true);
   };
+
+  // Watch for design selection changes and update pipeline opportunities
+  useEffect(() => {
+    if (showPipelineSection && pipelineOpportunities.length > 0) {
+      generatePipelineOpportunities();
+    }
+  }, [interests]);
 
   // Fetch categories, products, and dropdown options when modal opens
   useEffect(() => {
@@ -658,6 +717,16 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
                           copy[idx].preferences.designSelected = checked as boolean;
                           return copy;
                         });
+                        
+                        // If design is selected, automatically generate/update pipeline opportunities
+                        if (checked) {
+                          setTimeout(() => {
+                            generatePipelineOpportunities();
+                            setShowDesignSelectedNotification(true);
+                            // Hide notification after 5 seconds
+                            setTimeout(() => setShowDesignSelectedNotification(false), 5000);
+                          }, 100);
+                        }
                       }}
                     /> 
                     Design Selected?
@@ -737,19 +806,44 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
               Create sales pipeline opportunities based on customer interests and revenue potential
             </div>
             
+            {/* Design Selected Notification */}
+            {showDesignSelectedNotification && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-600">🎉</span>
+                  <span className="text-green-800 font-medium">
+                    Design Selected! Pipeline opportunities have been automatically updated to "Closed Won" stage.
+                  </span>
+                </div>
+                <div className="text-sm text-green-700 mt-1">
+                  Revenue will be reflected in the sales pipeline as a won deal.
+                </div>
+              </div>
+            )}
+            
             {showPipelineSection && pipelineOpportunities.length > 0 && (
               <div className="space-y-3">
                 <div className="text-sm font-medium text-green-700 mb-2">
                   ✅ {pipelineOpportunities.length} opportunity(s) will be created in the sales pipeline
                 </div>
                 {pipelineOpportunities.map((opportunity, idx) => (
-                  <div key={idx} className="border rounded p-3 bg-green-50">
-                    <div className="font-medium text-green-800">{opportunity.title}</div>
+                  <div key={idx} className={`border rounded p-3 ${opportunity.stage === 'closed_won' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+                    <div className="font-medium text-green-800 flex items-center gap-2">
+                      {opportunity.title}
+                      {opportunity.stage === 'closed_won' && (
+                        <Badge variant="default" className="bg-green-600 text-white">
+                          🎉 Closed Won
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-600 mt-1">
                       <span className="font-medium">Expected Value:</span> ₹{opportunity.expected_value.toLocaleString()}
                     </div>
                     <div className="text-sm text-gray-600">
                       <span className="font-medium">Probability:</span> {opportunity.probability}%
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : 'Lead'}
                     </div>
                     <div className="text-sm text-gray-600">
                       <span className="font-medium">Next Action:</span> {opportunity.next_action}

@@ -10,8 +10,11 @@ import { EditCustomerModal } from '@/components/customers/EditCustomerModal';
 import { TrashModal } from '@/components/customers/TrashModal';
 import { apiService, Client } from '@/lib/api-service';
 import { Search, Filter, Download, Plus, Eye, Edit, Trash2, Archive } from 'lucide-react';
+import { useScopedVisibility } from '@/lib/scoped-visibility';
+import ScopeIndicator from '@/components/ui/ScopeIndicator';
 
 export default function SalesCustomersPage() {
+  const { userScope } = useScopedVisibility();
   const [customers, setCustomers] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,6 +54,11 @@ export default function SalesCustomersPage() {
   const fetchCustomers = async () => {
     try {
       setLoading(true);
+      console.log('Fetching customers with user scope:', userScope.type);
+      
+      // Use scoped endpoint based on user role
+      // The backend middleware handles scoping automatically for getClients
+      // but we can add additional filtering if needed
       const response = await apiService.getClients();
       console.log('Customers API response:', response);
       
@@ -201,6 +209,9 @@ export default function SalesCustomersPage() {
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">Customers</h1>
             <p className="text-text-secondary mt-1">Find and manage your assigned customers</p>
+            <div className="mt-2">
+              <ScopeIndicator showDetails={false} />
+            </div>
           </div>
           <div className="flex gap-2 items-center">
             <Button 

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { apiService } from '@/lib/api-service';
 import { Loader2, X } from 'lucide-react';
+import ImageUpload from './ImageUpload';
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -66,6 +67,8 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
     is_featured: false,
     is_bestseller: false,
   });
+  const [mainImage, setMainImage] = useState<File | null>(null);
+  const [additionalImages, setAdditionalImages] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,19 +96,43 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
     setError(null);
 
     try {
-      const productData = {
-        ...formData,
-        category: formData.category ? parseInt(formData.category) : undefined,
-        cost_price: parseFloat(formData.cost_price.toString()),
-        selling_price: parseFloat(formData.selling_price.toString()),
-        discount_price: parseFloat(formData.discount_price.toString()),
-        quantity: parseInt(formData.quantity.toString()),
-        min_quantity: parseInt(formData.min_quantity.toString()),
-        max_quantity: parseInt(formData.max_quantity.toString()),
-        weight: parseFloat(formData.weight.toString()),
-      };
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+      
+      // Add basic product data
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('sku', formData.sku);
+      formDataToSend.append('description', formData.description);
+      if (formData.category) {
+        formDataToSend.append('category', formData.category);
+      }
+      formDataToSend.append('brand', formData.brand);
+      formDataToSend.append('cost_price', formData.cost_price.toString());
+      formDataToSend.append('selling_price', formData.selling_price.toString());
+      formDataToSend.append('discount_price', formData.discount_price.toString());
+      formDataToSend.append('quantity', formData.quantity.toString());
+      formDataToSend.append('min_quantity', formData.min_quantity.toString());
+      formDataToSend.append('max_quantity', formData.max_quantity.toString());
+      formDataToSend.append('weight', formData.weight.toString());
+      formDataToSend.append('dimensions', formData.dimensions);
+      formDataToSend.append('material', formData.material);
+      formDataToSend.append('color', formData.color);
+      formDataToSend.append('size', formData.size);
+      formDataToSend.append('status', formData.status);
+      formDataToSend.append('is_featured', formData.is_featured.toString());
+      formDataToSend.append('is_bestseller', formData.is_bestseller.toString());
 
-      const response = await apiService.createProduct(productData);
+      // Add main image
+      if (mainImage) {
+        formDataToSend.append('main_image', mainImage);
+      }
+
+      // Add additional images
+      additionalImages.forEach((image, index) => {
+        formDataToSend.append('additional_images', image);
+      });
+
+      const response = await apiService.createProduct(formDataToSend);
       if (response.success) {
         onSuccess();
         onClose();
@@ -131,6 +158,8 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
           is_featured: false,
           is_bestseller: false,
         });
+        setMainImage(null);
+        setAdditionalImages([]);
       } else {
         setError(response.message || 'Failed to create product');
       }
@@ -387,6 +416,12 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
               />
             </div>
           </div>
+
+          {/* Image Upload */}
+          <ImageUpload
+            onMainImageChange={setMainImage}
+            onAdditionalImagesChange={setAdditionalImages}
+          />
 
           {/* Status and Features */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

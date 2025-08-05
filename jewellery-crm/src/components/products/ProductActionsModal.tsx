@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { apiService } from '@/lib/api-service';
 import { Loader2, X, Edit, Trash2, Eye, Copy, Archive } from 'lucide-react';
+import ImageUpload from './ImageUpload';
 
 interface ProductActionsModalProps {
   isOpen: boolean;
@@ -77,6 +78,12 @@ export default function ProductActionsModal({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mainImage, setMainImage] = useState<File | null>(null);
+  const [additionalImages, setAdditionalImages] = useState<File[]>([]);
+  const [mainImageUrl, setMainImageUrl] = useState<string | undefined>(undefined);
+  const [additionalImagesUrls, setAdditionalImagesUrls] = useState<string[]>([]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
 
   React.useEffect(() => {
     if (isOpen && product) {
@@ -103,6 +110,10 @@ export default function ProductActionsModal({
           is_featured: product.is_featured || false,
           is_bestseller: product.is_bestseller || false,
         });
+        
+        // Set image URLs for display
+        setMainImageUrl(product.main_image_url);
+        setAdditionalImagesUrls(product.additional_images_urls || []);
       }
     }
   }, [isOpen, product, action]);
@@ -125,19 +136,43 @@ export default function ProductActionsModal({
     setError(null);
 
     try {
-      const productData = {
-        ...formData,
-        category: formData.category ? parseInt(formData.category) : undefined,
-        cost_price: parseFloat(formData.cost_price.toString()),
-        selling_price: parseFloat(formData.selling_price.toString()),
-        discount_price: parseFloat(formData.discount_price.toString()),
-        quantity: parseInt(formData.quantity.toString()),
-        min_quantity: parseInt(formData.min_quantity.toString()),
-        max_quantity: parseInt(formData.max_quantity.toString()),
-        weight: parseFloat(formData.weight.toString()),
-      };
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+      
+      // Add basic product data
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('sku', formData.sku);
+      formDataToSend.append('description', formData.description);
+      if (formData.category) {
+        formDataToSend.append('category', formData.category);
+      }
+      formDataToSend.append('brand', formData.brand);
+      formDataToSend.append('cost_price', formData.cost_price.toString());
+      formDataToSend.append('selling_price', formData.selling_price.toString());
+      formDataToSend.append('discount_price', formData.discount_price.toString());
+      formDataToSend.append('quantity', formData.quantity.toString());
+      formDataToSend.append('min_quantity', formData.min_quantity.toString());
+      formDataToSend.append('max_quantity', formData.max_quantity.toString());
+      formDataToSend.append('weight', formData.weight.toString());
+      formDataToSend.append('dimensions', formData.dimensions);
+      formDataToSend.append('material', formData.material);
+      formDataToSend.append('color', formData.color);
+      formDataToSend.append('size', formData.size);
+      formDataToSend.append('status', formData.status);
+      formDataToSend.append('is_featured', formData.is_featured.toString());
+      formDataToSend.append('is_bestseller', formData.is_bestseller.toString());
 
-      const response = await apiService.updateProduct(product.id.toString(), productData);
+      // Add main image if changed
+      if (mainImage) {
+        formDataToSend.append('main_image', mainImage);
+      }
+
+      // Add additional images if changed
+      additionalImages.forEach((image, index) => {
+        formDataToSend.append('additional_images', image);
+      });
+
+      const response = await apiService.updateProduct(product.id.toString(), formDataToSend);
       if (response.success) {
         onSuccess();
         onClose();
@@ -183,6 +218,30 @@ export default function ProductActionsModal({
     }));
   };
 
+  const handleImageClick = (imageUrl: string) => {
+    setSelectedImage(imageUrl);
+    setImageModalOpen(true);
+  };
+
+  const closeImageModal = () => {
+    setImageModalOpen(false);
+    setSelectedImage(null);
+  };
+
+  // Add keyboard support for closing image modal
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && imageModalOpen) {
+        closeImageModal();
+      }
+    };
+
+    if (imageModalOpen) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [imageModalOpen]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -227,6 +286,63 @@ export default function ProductActionsModal({
 
         {action === 'view' && (
           <div className="space-y-6">
+            {/* Product Images */}
+            {(product.main_image_url || (product.additional_images_urls && product.additional_images_urls.length > 0)) && (
+              <div>
+                <h3 className="font-semibold mb-3">Product Images</h3>
+                <div className="space-y-4">
+                  {/* Main Image */}
+                  {product.main_image_url && (
+                    <div>
+                      <Label className="text-sm text-gray-600 mb-2">Main Image</Label>
+                      <div className="relative">
+                        <img
+                          src={product.main_image_url}
+                          alt={product.name}
+                          className="w-48 h-48 object-cover rounded-lg border cursor-pointer hover:scale-105 transition-transform duration-200"
+                          onClick={() => handleImageClick(product.main_image_url)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Additional Images */}
+                  {product.additional_images_urls && product.additional_images_urls.length > 0 && (
+                    <div>
+                      <Label className="text-sm text-gray-600 mb-2">Additional Images</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {product.additional_images_urls.map((imageUrl: string, index: number) => (
+                          <div key={index} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`${product.name} - Image ${index + 1}`}
+                              className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:scale-105 transition-transform duration-200"
+                              onClick={() => handleImageClick(imageUrl)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* No Images Message */}
+            {!product.main_image_url && (!product.additional_images_urls || product.additional_images_urls.length === 0) && (
+              <div>
+                <h3 className="font-semibold mb-3">Product Images</h3>
+                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                  <div className="text-gray-500">
+                    <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-sm">No images uploaded for this product</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Product Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -280,6 +396,45 @@ export default function ProductActionsModal({
               <div>
                 <Label className="text-sm text-gray-600">Description</Label>
                 <p className="mt-1">{product.description}</p>
+              </div>
+            )}
+
+            {/* Additional Product Details */}
+            {(product.material || product.color || product.size || product.weight || product.dimensions) && (
+              <div>
+                <h3 className="font-semibold mb-3">Product Specifications</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {product.material && (
+                    <div>
+                      <Label className="text-sm text-gray-600">Material</Label>
+                      <p className="font-medium">{product.material}</p>
+                    </div>
+                  )}
+                  {product.color && (
+                    <div>
+                      <Label className="text-sm text-gray-600">Color</Label>
+                      <p className="font-medium">{product.color}</p>
+                    </div>
+                  )}
+                  {product.size && (
+                    <div>
+                      <Label className="text-sm text-gray-600">Size</Label>
+                      <p className="font-medium">{product.size}</p>
+                    </div>
+                  )}
+                  {product.weight && (
+                    <div>
+                      <Label className="text-sm text-gray-600">Weight (g)</Label>
+                      <p className="font-medium">{product.weight}</p>
+                    </div>
+                  )}
+                  {product.dimensions && (
+                    <div>
+                      <Label className="text-sm text-gray-600">Dimensions</Label>
+                      <p className="font-medium">{product.dimensions}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -517,6 +672,14 @@ export default function ProductActionsModal({
               </div>
             </div>
 
+            {/* Image Upload */}
+            <ImageUpload
+              mainImage={mainImageUrl}
+              additionalImages={additionalImagesUrls}
+              onMainImageChange={setMainImage}
+              onAdditionalImagesChange={setAdditionalImages}
+            />
+
             {/* Status and Features */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -627,6 +790,33 @@ export default function ProductActionsModal({
           </div>
         )}
       </div>
+
+      {/* Image Modal for Enlarged View */}
+      {imageModalOpen && selectedImage && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60]"
+          onClick={closeImageModal}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={closeImageModal}
+              className="absolute top-2 right-2 z-10 bg-white/20 hover:bg-white/30 text-white"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+            <img
+              src={selectedImage}
+              alt="Enlarged product image"
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

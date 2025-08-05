@@ -321,7 +321,7 @@ export default function TeamSettingsPage() {
         <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
           <DialogTrigger asChild>
             <Button className="btn-primary text-sm flex items-center gap-1">
-              <Plus className="w-4 h-4" /> Invite Member
+              <Plus className="w-4 h-4" /> Add Member
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">

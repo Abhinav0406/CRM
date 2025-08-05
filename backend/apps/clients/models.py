@@ -123,6 +123,9 @@ class Client(models.Model):
 
     # Tenant relationship
     tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='clients', null=True, blank=True)
+    
+    # Store relationship - Direct link to store for store-based visibility
+    store = models.ForeignKey('stores.Store', on_delete=models.CASCADE, related_name='clients', null=True, blank=True, help_text=_('Store this customer belongs to'))
 
     # Tags relationship
     tags = models.ManyToManyField('CustomerTag', related_name='clients', blank=True)

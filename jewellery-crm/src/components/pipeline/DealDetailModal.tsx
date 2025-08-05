@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiService, SalesPipeline, Client } from "@/lib/api-service";
 import { Edit, Calendar, DollarSign, User, Building, ArrowRight, CheckCircle, XCircle } from "lucide-react";
+import { useScopedVisibility } from '@/lib/scoped-visibility';
 
 interface DealDetailModalProps {
   open: boolean;
@@ -25,7 +26,28 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<{
+    title: string;
+    expected_value: string;
+    probability: string;
+    stage: string;
+    expected_close_date: string;
+    notes: string;
+    next_action: string;
+    next_action_date: string;
+  }>({
+    title: '',
+    expected_value: '',
+    probability: '',
+    stage: '',
+    expected_close_date: '',
+    notes: '',
+    next_action: '',
+    next_action_date: '',
+  });
+
+  // Get user scope for scoped visibility
+  const { userScope } = useScopedVisibility();
 
   useEffect(() => {
     if (open && dealId) {
@@ -36,7 +58,21 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
   const fetchDeal = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getPipeline(dealId!);
+      
+      console.log('Fetching deal with ID:', dealId);
+      console.log('User scope:', userScope);
+      
+      // Use scoped endpoint based on user role
+      let response;
+      if (userScope.type === 'own') {
+        // For salespeople, use the "my" endpoint
+        console.log('Using getMyPipeline endpoint for user scope:', userScope.type);
+        response = await apiService.getMyPipeline(dealId!);
+      } else {
+        // For managers and admins, use the regular endpoint (backend middleware handles scoping)
+        console.log('Using getPipeline endpoint for user scope:', userScope.type);
+        response = await apiService.getPipeline(dealId!);
+      }
       
       if (response.success && response.data) {
         setDeal(response.data);
@@ -59,8 +95,16 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching deal:', error);
+      
+      // Handle 404 errors (pipeline not found or no permission)
+      if (error.message && error.message.includes('Not found')) {
+        console.log('Pipeline not found or access denied - this is expected for scoped visibility');
+        // Don't close the modal automatically, just show an error
+        // The modal will show "Deal Not Found" message instead
+        console.error('Pipeline not found. This might be a data inconsistency issue.');
+      }
     } finally {
       setLoading(false);
     }
@@ -381,7 +425,9 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
                     <div className="space-y-3">
                       <div>
                         <Label className="text-sm font-medium text-gray-600">Client Name</Label>
-                        <p className="text-lg font-semibold">{client.first_name} {client.last_name}</p>
+                        <p className="text-lg font-semibold">
+                          {client.full_name || `${client.first_name} ${client.last_name}`.trim()}
+                        </p>
                       </div>
                       <div>
                         <Label className="text-sm font-medium text-gray-600">Email</Label>

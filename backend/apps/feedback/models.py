@@ -146,7 +146,7 @@ class Feedback(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.title} - {self.client.name} ({self.get_status_display()})"
+        return f"{self.title} - {self.client.full_name} ({self.get_status_display()})"
 
     def save(self, *args, **kwargs):
         # Auto-assign sentiment based on overall rating
@@ -327,4 +327,4 @@ class FeedbackSubmission(models.Model):
         ordering = ['-submitted_at']
 
     def __str__(self):
-        return f"{self.survey.name} - {self.client.name} ({self.submitted_at.date()})"
+        return f"{self.survey.name} - {self.client.full_name} ({self.submitted_at.date()})"

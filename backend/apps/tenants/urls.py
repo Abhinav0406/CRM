@@ -11,4 +11,5 @@ urlpatterns = [
     path('<int:pk>/delete/', views.TenantDeleteView.as_view(), name='tenant-delete'),
     path('dashboard/', views.BusinessDashboardView.as_view(), name='business-dashboard'),
     path('platform-dashboard/', views.PlatformAdminDashboardView.as_view(), name='platform-dashboard'),
+    path('manager-dashboard/', views.ManagerDashboardView.as_view(), name='manager-dashboard'),
 ] 
