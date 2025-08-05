@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { X, Check, Trash2, Settings, RefreshCw, Calendar, TrendingUp, Package, AlertTriangle, MessageSquare, Bell } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Check, Trash2, Settings, RefreshCw, Calendar, TrendingUp, Package, AlertTriangle, MessageSquare, Bell, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,6 +9,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
 import { Notification, NotificationType, NotificationPriority } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+import { notificationSound } from '@/lib/notification-sound';
 
 interface NotificationPanelProps {
   onClose: () => void;
@@ -67,6 +68,13 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
   const { state, actions } = useNotifications();
   const { user, isAuthenticated, isHydrated } = useAuth();
   const panelRef = useRef<HTMLDivElement>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+
+  // Initialize volume from notification sound
+  useEffect(() => {
+    setVolume(notificationSound.getVolume());
+  }, []);
 
   // Filter notifications based on user role and store access
   const getScopedNotifications = (notifications: Notification[]) => {
@@ -194,6 +202,22 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
     }
   };
 
+  const handleToggleMute = () => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    notificationSound.setEnabled(!newMutedState);
+    
+    // Test sound if unmuting
+    if (newMutedState === false) {
+      notificationSound.play();
+    }
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    notificationSound.setVolume(newVolume);
+  };
+
   const renderNotification = (notification: Notification) => (
     <div
       key={notification.id}
@@ -309,6 +333,19 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0"
+            onClick={handleToggleMute}
+            title={isMuted ? "Unmute notifications" : "Mute notifications"}
+          >
+            {isMuted ? (
+              <VolumeX className="h-4 w-4 text-gray-400" />
+            ) : (
+              <Volume2 className="h-4 w-4 text-green-500" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
             onClick={handleRefresh}
             disabled={state.isLoading}
             title="Refresh notifications"
@@ -344,6 +381,19 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
                 Mark all as read
               </Button>
             )}
+            <div className="flex items-center gap-1">
+              <Volume2 className="h-3 w-3 text-gray-500" />
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                className="w-12 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                title="Volume"
+              />
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -351,6 +401,15 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
               title="Notification settings"
             >
               <Settings className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-blue-500 hover:text-blue-600"
+              onClick={() => notificationSound.play()}
+              title="Test notification sound"
+            >
+              <Volume2 className="h-3 w-3" />
             </Button>
             <Button
               variant="ghost"

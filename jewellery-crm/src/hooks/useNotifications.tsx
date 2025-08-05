@@ -4,6 +4,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback } 
 import { Notification, NotificationType, NotificationPriority, NotificationStatus, NotificationSettings } from '@/types';
 import { apiService } from '@/lib/api-service';
 import { useAuth } from './useAuth';
+import { notificationSound } from '@/lib/notification-sound';
 
 // ================================
 // NOTIFICATION CONTEXT TYPES
@@ -59,6 +60,12 @@ const notificationReducer = (state: NotificationState, action: NotificationActio
       const newUnreadCount = action.payload.status === 'unread' 
         ? state.unreadCount + 1 
         : state.unreadCount;
+      
+      // Play notification sound for new unread notifications
+      if (action.payload.status === 'unread') {
+        notificationSound.play();
+      }
+      
       return {
         ...state,
         notifications: newNotifications,

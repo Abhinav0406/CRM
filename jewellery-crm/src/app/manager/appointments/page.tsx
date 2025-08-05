@@ -6,7 +6,35 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Eye } from 'lucide-react';
-import { apiService, Appointment } from '@/lib/api-service';
+import { apiService } from '@/lib/api-service';
+
+// Local interface to match backend serializer
+interface Appointment {
+  id: number;
+  client: number;
+  client_name?: string;
+  tenant: number;
+  date: string;
+  time: string;
+  purpose: string;
+  notes?: string;
+  status: string;
+  reminder_sent: boolean;
+  reminder_date?: string;
+  requires_follow_up: boolean;
+  follow_up_date?: string;
+  follow_up_notes?: string;
+  duration: number;
+  location?: string;
+  outcome_notes?: string;
+  next_action?: string;
+  created_by?: number;
+  assigned_to?: number;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  deleted_at?: string;
+}
 
 export default function ManagerAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -110,7 +138,9 @@ export default function ManagerAppointmentsPage() {
               ) : (
                 filteredAppointments.map((a, i) => (
                   <tr key={i} className="border-t border-border hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium text-text-primary">Customer #{a.client}</td>
+                    <td className="px-4 py-2 font-medium text-text-primary">
+                      {a.client_name || `Customer #${a.client}`}
+                    </td>
                     <td className="px-4 py-2 text-text-primary">
                       {new Date(a.date).toLocaleDateString()}, {a.time}
                     </td>

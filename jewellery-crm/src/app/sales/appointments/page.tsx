@@ -4,9 +4,37 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { apiService, Appointment } from '@/lib/api-service';
+import { apiService } from '@/lib/api-service';
 import { Calendar, Eye, Search, Plus, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { AppointmentDetailModal } from '@/components/appointments/AppointmentDetailModal';
+
+// Local interface to match backend serializer
+interface Appointment {
+  id: number;
+  client: number;
+  client_name?: string;
+  tenant: number;
+  date: string;
+  time: string;
+  purpose: string;
+  notes?: string;
+  status: string;
+  reminder_sent: boolean;
+  reminder_date?: string;
+  requires_follow_up: boolean;
+  follow_up_date?: string;
+  follow_up_notes?: string;
+  duration: number;
+  location?: string;
+  outcome_notes?: string;
+  next_action?: string;
+  created_by?: number;
+  assigned_to?: number;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+  deleted_at?: string;
+}
 
 interface AppointmentStats {
   totalAppointments: number;
@@ -131,12 +159,12 @@ export default function SalesAppointmentsPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'scheduled':
-      case 'confirmed':
         return <Clock className="w-4 h-4 text-blue-500" />;
+      case 'confirmed':
+        return <Calendar className="w-4 h-4 text-green-500" />;
       case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'cancelled':
-      case 'no_show':
         return <XCircle className="w-4 h-4 text-red-500" />;
       default:
         return <Clock className="w-4 h-4 text-gray-500" />;
@@ -149,38 +177,14 @@ export default function SalesAppointmentsPage() {
   };
 
   const handleCreateAppointment = () => {
-    // This would navigate to create appointment page
-    console.log('Creating new appointment');
-    // In a real implementation, this would navigate to create appointment
+    // TODO: Implement create appointment functionality
+    console.log('Create appointment clicked');
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
-          <div>
-            <h1 className="text-2xl font-semibold text-text-primary">Appointments</h1>
-            <p className="text-text-secondary mt-1">Schedule and manage your appointments</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="flex flex-col gap-1 p-5 animate-pulse">
-              <div className="h-6 bg-gray-200 rounded mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded"></div>
-            </Card>
-          ))}
-        </div>
-        <Card className="p-4">
-          <div className="animate-pulse">
-            <div className="h-10 bg-gray-200 rounded mb-4"></div>
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-12 bg-gray-200 rounded"></div>
-              ))}
-            </div>
-          </div>
-        </Card>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -190,59 +194,58 @@ export default function SalesAppointmentsPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Appointments</h1>
-          <p className="text-text-secondary mt-1">Schedule and manage your appointments</p>
+          <p className="text-text-secondary mt-1">Manage and track all appointments</p>
         </div>
         <Button className="btn-primary text-sm flex items-center gap-1" onClick={handleCreateAppointment}>
-          <Plus className="w-4 h-4" />
-          New Appointment
+          <Plus className="w-4 h-4" /> New Appointment
         </Button>
       </div>
-      
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="flex flex-col gap-1 p-5">
           <div className="text-xl font-bold text-text-primary">{stats.totalAppointments}</div>
           <div className="text-sm text-text-secondary font-medium">Total Appointments</div>
         </Card>
         <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-blue-600">{stats.upcomingAppointments}</div>
+          <div className="text-xl font-bold text-text-primary">{stats.upcomingAppointments}</div>
           <div className="text-sm text-text-secondary font-medium">Upcoming</div>
         </Card>
         <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-green-600">{stats.completedAppointments}</div>
+          <div className="text-xl font-bold text-text-primary">{stats.completedAppointments}</div>
           <div className="text-sm text-text-secondary font-medium">Completed</div>
         </Card>
         <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-red-600">{stats.cancelledAppointments}</div>
+          <div className="text-xl font-bold text-text-primary">{stats.cancelledAppointments}</div>
           <div className="text-sm text-text-secondary font-medium">Cancelled</div>
         </Card>
       </div>
-      
+
+      {/* Appointments Table */}
       <Card className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-          <div className="flex flex-col sm:flex-row gap-2 flex-1">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input 
-                placeholder="Search by customer or purpose..." 
-                className="pl-10 w-full"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">All Status</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="rescheduled">Rescheduled</option>
-              <option value="no_show">No Show</option>
-            </select>
+        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search by customer or type..."
+              className="pl-10 w-full md:w-80"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
+          <select
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="rescheduled">Rescheduled</option>
+            <option value="no_show">No Show</option>
+          </select>
         </div>
         
         <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
@@ -262,7 +265,7 @@ export default function SalesAppointmentsPage() {
                 filteredAppointments.map((appointment) => (
                   <tr key={appointment.id} className="border-t border-border hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-text-primary">
-                      Customer #{appointment.client}
+                      {appointment.client_name || `Customer #${appointment.client}`}
                     </td>
                     <td className="px-4 py-3 text-text-primary">
                       {formatDateTime(appointment.date, appointment.time)}
