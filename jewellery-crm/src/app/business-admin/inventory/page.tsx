@@ -7,6 +7,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Badge } from '@/components/ui/badge';
 import { Search, Filter, Loader2 } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
+import AuthGuard from '@/components/auth/AuthGuard';
 
 interface Product {
   id: number;
@@ -77,9 +78,9 @@ export default function InventoryPage() {
         
         // Calculate stats
         const totalItems = productsData.length;
-        const lowStock = productsData.filter(product => product.quantity <= product.min_quantity && product.quantity > 0).length;
-        const outOfStock = productsData.filter(product => product.quantity === 0).length;
-        const inventoryValue = productsData.reduce((sum, product) => sum + (product.cost_price * product.quantity), 0);
+        const lowStock = productsData.filter((product: Product) => product.quantity <= product.min_quantity && product.quantity > 0).length;
+        const outOfStock = productsData.filter((product: Product) => product.quantity === 0).length;
+        const inventoryValue = productsData.reduce((sum: number, product: Product) => sum + (product.cost_price * product.quantity), 0);
         
         setStats({
           total_items: totalItems,
@@ -144,106 +145,108 @@ export default function InventoryPage() {
   const filteredProducts = getFilteredProducts();
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
-        <div>
-          <h1 className="text-2xl font-semibold text-text-primary">Inventory</h1>
-          <p className="text-text-secondary mt-1">Track and manage your product inventory</p>
-        </div>
-      </div>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-text-primary">{stats.total_items}</div>
-          <div className="text-sm text-text-secondary font-medium">Total Items</div>
-        </Card>
-        <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-text-primary">{stats.low_stock}</div>
-          <div className="text-sm text-text-secondary font-medium">Low Stock</div>
-        </Card>
-        <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-text-primary">{stats.out_of_stock}</div>
-          <div className="text-sm text-text-secondary font-medium">Out of Stock</div>
-        </Card>
-        <Card className="flex flex-col gap-1 p-5">
-          <div className="text-xl font-bold text-text-primary">{formatCurrency(stats.inventory_value)}</div>
-          <div className="text-sm text-text-secondary font-medium">Inventory Value</div>
-        </Card>
-      </div>
-
-      {/* Table Controls */}
-      <Card className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by product or SKU..." 
-              className="w-full md:w-80 pl-8"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+    <AuthGuard requiredRole="business_admin">
+      <div className="flex flex-col gap-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+          <div>
+            <h1 className="text-2xl font-semibold text-text-primary">Inventory</h1>
+            <p className="text-text-secondary mt-1">Track and manage your product inventory</p>
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="in stock">In Stock</SelectItem>
-              <SelectItem value="low stock">Low Stock</SelectItem>
-              <SelectItem value="out of stock">Out of Stock</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Product</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">SKU</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Stock</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Status</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Value</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Last Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
-                    No inventory items found
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map((product) => {
-                  const stockStatus = getStockStatus(product);
-                  return (
-                    <tr key={product.id} className="border-t border-border hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-text-primary">{product.name}</td>
-                      <td className="px-4 py-2 text-text-primary">{product.sku}</td>
-                      <td className="px-4 py-2 text-text-primary">{product.quantity}</td>
-                      <td className="px-4 py-2">
-                        <Badge className={stockStatus.color}>
-                          {stockStatus.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 text-text-primary">
-                        {formatCurrency(product.cost_price * product.quantity)}
-                      </td>
-                      <td className="px-4 py-2 text-text-secondary">{formatDate(product.updated_at)}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="flex flex-col gap-1 p-5">
+            <div className="text-xl font-bold text-text-primary">{stats.total_items}</div>
+            <div className="text-sm text-text-secondary font-medium">Total Items</div>
+          </Card>
+          <Card className="flex flex-col gap-1 p-5">
+            <div className="text-xl font-bold text-text-primary">{stats.low_stock}</div>
+            <div className="text-sm text-text-secondary font-medium">Low Stock</div>
+          </Card>
+          <Card className="flex flex-col gap-1 p-5">
+            <div className="text-xl font-bold text-text-primary">{stats.out_of_stock}</div>
+            <div className="text-sm text-text-secondary font-medium">Out of Stock</div>
+          </Card>
+          <Card className="flex flex-col gap-1 p-5">
+            <div className="text-xl font-bold text-text-primary">{formatCurrency(stats.inventory_value)}</div>
+            <div className="text-sm text-text-secondary font-medium">Inventory Value</div>
+          </Card>
         </div>
-      </Card>
-    </div>
+
+        {/* Table Controls */}
+        <Card className="p-4 flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by product or SKU..." 
+                className="w-full md:w-80 pl-8"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="in stock">In Stock</SelectItem>
+                <SelectItem value="low stock">Low Stock</SelectItem>
+                <SelectItem value="out of stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Product</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">SKU</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Stock</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Value</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
+                      No inventory items found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((product) => {
+                    const stockStatus = getStockStatus(product);
+                    return (
+                      <tr key={product.id} className="border-t border-border hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-text-primary">{product.name}</td>
+                        <td className="px-4 py-2 text-text-primary">{product.sku}</td>
+                        <td className="px-4 py-2 text-text-primary">{product.quantity}</td>
+                        <td className="px-4 py-2">
+                          <Badge className={stockStatus.color}>
+                            {stockStatus.status}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-2 text-text-primary">
+                          {formatCurrency(product.cost_price * product.quantity)}
+                        </td>
+                        <td className="px-4 py-2 text-text-secondary">{formatDate(product.updated_at)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </AuthGuard>
   );
 }
  

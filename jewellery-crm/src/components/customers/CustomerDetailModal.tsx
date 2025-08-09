@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiService, Client } from "@/lib/api-service";
 import { useAuth } from "@/hooks/useAuth";
-import { Calendar, Phone, Mail, MapPin, User, Clock, Edit, Trash2 } from "lucide-react";
+import { Calendar, Phone, Mail, MapPin, User, Clock, Edit, Trash2, X as XIcon } from "lucide-react";
 
 interface CustomerDetailModalProps {
   open: boolean;
@@ -164,7 +164,7 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" showCloseButton={false}>
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -173,7 +173,7 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
                 View and manage customer information
               </DialogDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -192,6 +192,14 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
                   Delete
                 </Button>
               )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={onClose}
+                className="ml-2"
+              >
+                <XIcon className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </DialogHeader>

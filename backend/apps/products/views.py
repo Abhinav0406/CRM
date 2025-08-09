@@ -381,7 +381,13 @@ class StockTransferCreateView(generics.CreateAPIView):
     
     def perform_create(self, serializer):
         user = self.request.user
-        serializer.save(requested_by=user)
+        transfer = serializer.save(requested_by=user)
+        
+        # Send notification for transfer request
+        from .services import StockTransferNotificationService
+        StockTransferNotificationService.notify_transfer_request(transfer)
+        
+        return transfer
 
 
 class StockTransferDetailView(generics.RetrieveAPIView):
@@ -422,6 +428,11 @@ class StockTransferApproveView(generics.GenericAPIView):
                     }, status=status.HTTP_403_FORBIDDEN)
             
             transfer.approve(request.user)
+            
+            # Send notification for transfer approval
+            from .services import StockTransferNotificationService
+            StockTransferNotificationService.notify_transfer_approved(transfer)
+            
             return Response({
                 'success': True,
                 'message': 'Transfer approved successfully'
@@ -460,6 +471,10 @@ class StockTransferCompleteView(generics.GenericAPIView):
             
             success = transfer.complete()
             if success:
+                # Send notification for transfer completion
+                from .services import StockTransferNotificationService
+                StockTransferNotificationService.notify_transfer_completed(transfer)
+                
                 return Response({
                     'success': True,
                     'message': 'Transfer completed successfully'
@@ -496,6 +511,11 @@ class StockTransferCancelView(generics.GenericAPIView):
                     }, status=status.HTTP_403_FORBIDDEN)
             
             transfer.cancel()
+            
+            # Send notification for transfer cancellation
+            from .services import StockTransferNotificationService
+            StockTransferNotificationService.notify_transfer_cancelled(transfer)
+            
             return Response({
                 'success': True,
                 'message': 'Transfer cancelled successfully'
@@ -851,12 +871,31 @@ class ProductImportView(APIView):
                     # Get or create category
                     category_name = row['category'].strip()
                     try:
+                        # Set store and scope for category based on user role
+                        store = None
+                        scope = 'global'
+                        
+                        if request.user.role == 'manager':
+                            store = request.user.store
+                            scope = 'store'
+                        elif request.user.role == 'business_admin':
+                            # Business admin can create global categories
+                            scope = 'global'
+                        else:
+                            # Other roles create store-specific categories
+                            store = request.user.store
+                            scope = 'store'
+                        
                         category, created = Category.objects.get_or_create(
                             name=category_name,
                             tenant=request.user.tenant,
+                            store=store,
+                            scope=scope,
                             defaults={
                                 'description': f'Category for {category_name}',
-                                'is_active': True
+                                'is_active': True,
+                                'store': store,
+                                'scope': scope
                             }
                         )
                         if created:
@@ -875,6 +914,21 @@ class ProductImportView(APIView):
                     
                     # Create product
                     try:
+                        # Set store and scope based on user role
+                        store = None
+                        scope = 'global'
+                        
+                        if request.user.role == 'manager':
+                            store = request.user.store
+                            scope = 'store'
+                        elif request.user.role == 'business_admin':
+                            # Business admin can create global products
+                            scope = 'global'
+                        else:
+                            # Other roles create store-specific products
+                            store = request.user.store
+                            scope = 'store'
+                        
                         product = Product.objects.create(
                             name=row['name'].strip(),
                             sku=row['sku'].strip(),
@@ -885,6 +939,8 @@ class ProductImportView(APIView):
                             description=row.get('description', '').strip(),
                             status='active',
                             tenant=request.user.tenant,
+                            store=store,
+                            scope=scope,
                             is_featured=False,
                             is_bestseller=False,
                             min_quantity=0,

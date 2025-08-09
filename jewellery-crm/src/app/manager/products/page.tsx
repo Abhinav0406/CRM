@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle, Store, Tag, TrendingUp } from 'lucide-react';
+import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle, Store, Tag, TrendingUp, Upload } from 'lucide-react';
 import { apiService, Product } from '@/lib/api-service';
+import AuthGuard from '@/components/auth/AuthGuard';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,7 @@ import StockTransferModal from '@/components/products/StockTransferModal';
 import AddProductModal from '@/components/products/AddProductModal';
 import CategoriesModal from '@/components/products/CategoriesModal';
 import ProductActionsModal from '@/components/products/ProductActionsModal';
+import ImportProductsModal from '@/components/products/ImportProductsModal';
 
 interface Category {
   id: number;
@@ -72,6 +74,7 @@ export default function ManagerProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedAction, setSelectedAction] = useState<'view' | 'edit' | 'delete' | null>(null);
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -244,283 +247,298 @@ export default function ManagerProductsPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Store Products</h1>
-          <p className="text-muted-foreground">
-            Manage your store's product catalog and inventory
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsCategoriesModalOpen(true)}>
-            <Tag className="w-4 h-4 mr-2" />
-            Categories
-          </Button>
-          <Button variant="outline" onClick={() => setIsInventoryModalOpen(true)}>
-            <Package className="w-4 h-4 mr-2" />
-            Inventory
-          </Button>
-          <Button variant="outline" onClick={() => setIsStockTransferModalOpen(true)}>
-            <Package className="w-4 h-4 mr-2" />
-            Transfers
-          </Button>
-          <Button onClick={() => setIsAddModalOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Product
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsCards.map((stat, index) => (
-          <Card key={index}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.sub}</p>
-                </div>
-                <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                  <stat.icon className="w-4 h-4 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-          <Input 
-                placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-            </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.id.toString()}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={scopeFilter} onValueChange={(value: 'all' | 'global' | 'store') => setScopeFilter(value)}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Scope" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Scopes</SelectItem>
-                <SelectItem value="global">Global</SelectItem>
-                <SelectItem value="store">Store</SelectItem>
-              </SelectContent>
-            </Select>
+    <AuthGuard requiredRole="manager">
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Store Products</h1>
+            <p className="text-muted-foreground">
+              Manage your store's product catalog and inventory
+            </p>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Products Grid */}
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p className="text-muted-foreground">Loading products...</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsCategoriesModalOpen(true)}>
+              <Tag className="w-4 h-4 mr-2" />
+              Categories
+            </Button>
+            <Button variant="outline" onClick={() => setIsInventoryModalOpen(true)}>
+              <Package className="w-4 h-4 mr-2" />
+              Inventory
+            </Button>
+            <Button variant="outline" onClick={() => setIsStockTransferModalOpen(true)}>
+              <Package className="w-4 h-4 mr-2" />
+              Transfers
+            </Button>
+            <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import
+            </Button>
+            <Button onClick={() => setIsAddModalOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className="overflow-hidden">
-              <div className="relative">
-                {product.main_image_url ? (
-                  <img
-                    src={product.main_image_url}
-                    alt={product.name}
-                    className="w-full h-48 object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-48 bg-muted flex items-center justify-center">
-                    <Package className="w-12 h-12 text-muted-foreground" />
-                          </div>
-                        )}
-                
-                {/* Scope Badge */}
-                <div className="absolute top-2 left-2">
-                  <Badge variant={getScopeBadgeVariant(product.scope)} className="text-xs">
-                    {getScopeIcon(product.scope)}
-                    <span className="ml-1">{getScopeLabel(product.scope)}</span>
-                  </Badge>
-                </div>
 
-                {/* Stock Status */}
-                <div className="absolute top-2 right-2">
-                  <Badge variant={getStockStatus(product).variant}>
-                          {getStockIcon(product)}
-                    <span className="ml-1">{getStockStatus(product).status}</span>
-                  </Badge>
-                </div>
-              </div>
-
-              <CardContent className="p-4">
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-lg truncate" title={product.name}>
-                    {product.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
-                  
-                  {product.category_name && (
-                    <p className="text-sm text-muted-foreground">
-                      Category: {product.category_name}
-                    </p>
-                  )}
-
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-lg font-bold">
-                        {formatCurrency(product.current_price || product.selling_price)}
-                      </p>
-                      {product.discount_price && product.discount_price !== product.selling_price && (
-                        <p className="text-sm text-muted-foreground line-through">
-                          {formatCurrency(product.selling_price)}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">
-                        Stock: {product.quantity}
-                      </p>
-                      {product.is_low_stock && (
-                        <p className="text-xs text-yellow-600">Low Stock</p>
-                      )}
-                    </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {statsCards.map((stat, index) => (
+            <Card key={index}>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold">{stat.value}</p>
+                    <p className="text-xs text-muted-foreground">{stat.sub}</p>
                   </div>
-
-                  <div className="flex justify-between items-center pt-2">
-                    <div className="flex gap-1">
-                      {product.is_featured && (
-                        <Badge variant="secondary" className="text-xs">Featured</Badge>
-                      )}
-                      {product.is_bestseller && (
-                        <Badge variant="secondary" className="text-xs">Best Seller</Badge>
-                      )}
-                        </div>
-                    
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <Package className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleProductAction(product, 'view')}>
-                          <Eye className="w-4 h-4 mr-2" />
-                          View
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleProductAction(product, 'edit')}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleProductAction(product, 'delete')}>
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                    <stat.icon className="w-4 h-4 text-primary" />
                   </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
-      )}
 
-      {!loading && filteredProducts.length === 0 && (
+        {/* Filters */}
         <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64">
-            <Package className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No products found</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              {searchTerm || categoryFilter !== 'all' || statusFilter !== 'all' || scopeFilter !== 'all'
-                ? 'Try adjusting your filters'
-                : 'Get started by adding your first product'}
-            </p>
-            <Button onClick={() => setIsAddModalOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Product
-            </Button>
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Input 
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id.toString()}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={scopeFilter} onValueChange={(value: 'all' | 'global' | 'store') => setScopeFilter(value)}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Scope" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Scopes</SelectItem>
+                  <SelectItem value="global">Global</SelectItem>
+                  <SelectItem value="store">Store</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
-      </Card>
-      )}
+        </Card>
 
-      {/* Modals */}
-      <AddProductModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onSuccess={() => {
-          setIsAddModalOpen(false);
-          fetchData();
-        }}
-      />
-      <CategoriesModal
-        isOpen={isCategoriesModalOpen}
-        onClose={() => setIsCategoriesModalOpen(false)}
-        onSuccess={() => {
-          setIsCategoriesModalOpen(false);
-          fetchData();
-        }}
-      />
-      <InventoryModal
-        isOpen={isInventoryModalOpen}
-        onClose={() => setIsInventoryModalOpen(false)}
-        onSuccess={() => {
-          setIsInventoryModalOpen(false);
-          fetchData();
-        }}
-      />
-      <StockTransferModal
-        isOpen={isStockTransferModalOpen}
-        onClose={() => setIsStockTransferModalOpen(false)}
-        onSuccess={() => {
-          setIsStockTransferModalOpen(false);
-          fetchData();
-        }}
-      />
+        {/* Products Grid */}
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+              <p className="text-muted-foreground">Loading products...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredProducts.map((product) => (
+              <Card key={product.id} className="overflow-hidden">
+                <div className="relative">
+                  {product.main_image_url ? (
+                    <img
+                      src={product.main_image_url}
+                      alt={product.name}
+                      className="w-full h-48 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-48 bg-muted flex items-center justify-center">
+                      <Package className="w-12 h-12 text-muted-foreground" />
+                    </div>
+                  )}
+                  
+                  {/* Scope Badge */}
+                  <div className="absolute top-2 left-2">
+                    <Badge variant={getScopeBadgeVariant(product.scope)} className="text-xs">
+                      {getScopeIcon(product.scope)}
+                      <span className="ml-1">{getScopeLabel(product.scope)}</span>
+                    </Badge>
+                  </div>
 
-      {selectedProduct && (
-        <ProductActionsModal
-          isOpen={isActionsModalOpen}
-          onClose={handleActionsModalClose}
-          product={selectedProduct}
-          action={selectedAction!}
+                  {/* Stock Status */}
+                  <div className="absolute top-2 right-2">
+                    <Badge variant={getStockStatus(product).variant}>
+                      {getStockIcon(product)}
+                      <span className="ml-1">{getStockStatus(product).status}</span>
+                    </Badge>
+                  </div>
+                </div>
+
+                <CardContent className="p-4">
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-lg truncate" title={product.name}>
+                      {product.name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
+                    
+                    {product.category_name && (
+                      <p className="text-sm text-muted-foreground">
+                        Category: {product.category_name}
+                      </p>
+                    )}
+
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-lg font-bold">
+                          {formatCurrency(product.current_price || product.selling_price)}
+                        </p>
+                        {product.discount_price && product.discount_price !== product.selling_price && (
+                          <p className="text-sm text-muted-foreground line-through">
+                            {formatCurrency(product.selling_price)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">
+                          Stock: {product.quantity}
+                        </p>
+                        {product.is_low_stock && (
+                          <p className="text-xs text-yellow-600">Low Stock</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="flex gap-1">
+                        {product.is_featured && (
+                          <Badge variant="secondary" className="text-xs">Featured</Badge>
+                        )}
+                        {product.is_bestseller && (
+                          <Badge variant="secondary" className="text-xs">Best Seller</Badge>
+                        )}
+                      </div>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <Package className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleProductAction(product, 'view')}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleProductAction(product, 'edit')}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleProductAction(product, 'delete')}>
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {!loading && filteredProducts.length === 0 && (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center h-64">
+              <Package className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No products found</h3>
+              <p className="text-muted-foreground text-center mb-4">
+                {searchTerm || categoryFilter !== 'all' || statusFilter !== 'all' || scopeFilter !== 'all'
+                  ? 'Try adjusting your filters'
+                  : 'Get started by adding your first product'}
+              </p>
+              <Button onClick={() => setIsAddModalOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Product
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Modals */}
+        <AddProductModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
           onSuccess={() => {
-            handleActionsModalClose();
+            setIsAddModalOpen(false);
             fetchData();
           }}
         />
-      )}
-    </div>
+        <CategoriesModal
+          isOpen={isCategoriesModalOpen}
+          onClose={() => setIsCategoriesModalOpen(false)}
+          onSuccess={() => {
+            setIsCategoriesModalOpen(false);
+            fetchData();
+          }}
+        />
+        <InventoryModal
+          isOpen={isInventoryModalOpen}
+          onClose={() => setIsInventoryModalOpen(false)}
+          onSuccess={() => {
+            setIsInventoryModalOpen(false);
+            fetchData();
+          }}
+        />
+        <StockTransferModal
+          isOpen={isStockTransferModalOpen}
+          onClose={() => setIsStockTransferModalOpen(false)}
+          onSuccess={() => {
+            setIsStockTransferModalOpen(false);
+            fetchData();
+          }}
+        />
+
+        {selectedProduct && (
+          <ProductActionsModal
+            isOpen={isActionsModalOpen}
+            onClose={handleActionsModalClose}
+            product={selectedProduct}
+            action={selectedAction!}
+            onSuccess={() => {
+              handleActionsModalClose();
+              fetchData();
+            }}
+          />
+        )}
+
+        <ImportProductsModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchData();
+          }}
+        />
+      </div>
+    </AuthGuard>
   );
 } 

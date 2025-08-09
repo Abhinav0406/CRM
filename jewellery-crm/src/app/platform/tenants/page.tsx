@@ -24,8 +24,8 @@ import {
 interface Tenant {
   id: number;
   name: string;
-  business_type: string;
-  subscription_status: string;
+  business_type: string | null;
+  subscription_status: string | null;
   created_at: string;
   users: Array<{
     id: number;
@@ -107,7 +107,9 @@ export default function TenantsListPage() {
     setTenantToDelete(null);
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | null) => {
+    if (!status) return 'bg-gray-100 text-gray-800 border-gray-200';
+    
     switch (status) {
       case 'active':
         return 'bg-green-100 text-green-800 border-green-200';
@@ -120,7 +122,9 @@ export default function TenantsListPage() {
     }
   };
 
-  const getBusinessTypeIcon = (type: string) => {
+  const getBusinessTypeIcon = (type: string | null) => {
+    if (!type) return '🏢';
+    
     switch (type) {
       case 'jewelry_store':
         return '💍';
@@ -138,7 +142,7 @@ export default function TenantsListPage() {
   // Filter tenants based on search and status
   const filteredTenants = tenants.filter(tenant => {
     const matchesSearch = tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         tenant.business_type.toLowerCase().includes(searchTerm.toLowerCase());
+                         (tenant.business_type?.toLowerCase() || '').includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || tenant.subscription_status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -319,13 +323,13 @@ export default function TenantsListPage() {
                       <div>
                         <div className="font-medium text-foreground">{tenant.name}</div>
                         <div className="text-sm text-muted-foreground capitalize">
-                          {tenant.business_type.replace('_', ' ')}
+                          {tenant.business_type?.replace('_', ' ') || 'Unknown'}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td className="py-4 px-4 text-muted-foreground capitalize">
-                    {tenant.business_type.replace('_', ' ')}
+                    {tenant.business_type?.replace('_', ' ') || 'Unknown'}
                   </td>
                   <td className="py-4 px-4">
                     <div className="flex items-center text-muted-foreground">
@@ -335,7 +339,7 @@ export default function TenantsListPage() {
                   </td>
                   <td className="py-4 px-4">
                     <Badge className={`${getStatusColor(tenant.subscription_status)} border`}>
-                      {tenant.subscription_status.charAt(0).toUpperCase() + tenant.subscription_status.slice(1)}
+                      {tenant.subscription_status ? tenant.subscription_status.charAt(0).toUpperCase() + tenant.subscription_status.slice(1) : 'Unknown'}
                     </Badge>
                   </td>
                   <td className="py-4 px-4 text-muted-foreground">
@@ -379,12 +383,12 @@ export default function TenantsListPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-foreground truncate">{tenant.name}</h3>
                       <p className="text-sm text-muted-foreground capitalize">
-                        {tenant.business_type.replace('_', ' ')}
+                        {tenant.business_type?.replace('_', ' ') || 'Unknown'}
                       </p>
                     </div>
                   </div>
                   <Badge className={`${getStatusColor(tenant.subscription_status)} border`}>
-                    {tenant.subscription_status.charAt(0).toUpperCase() + tenant.subscription_status.slice(1)}
+                    {tenant.subscription_status ? tenant.subscription_status.charAt(0).toUpperCase() + tenant.subscription_status.slice(1) : 'Unknown'}
                   </Badge>
                 </div>
 

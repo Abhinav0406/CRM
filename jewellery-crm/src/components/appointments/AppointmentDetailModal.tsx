@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,9 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [outcomeNotes, setOutcomeNotes] = useState('');
+  const [customerName, setCustomerName] = useState<string>('');
+  const [assignedUserName, setAssignedUserName] = useState<string>('');
+  const [createdUserName, setCreatedUserName] = useState<string>('');
   const [rescheduleData, setRescheduleData] = useState({
     newDate: '',
     newTime: '',
@@ -38,6 +41,52 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
     duration: 60,
     client: ''
   });
+
+  // Fetch customer and user names when appointment changes
+  useEffect(() => {
+    if (appointment) {
+      fetchCustomerAndUserNames();
+    }
+  }, [appointment]);
+
+    const fetchCustomerAndUserNames = async () => {
+    if (!appointment) return;
+
+    try {
+      // Use embedded names from the appointment data if available
+      if (appointment.assigned_to_name) {
+        setAssignedUserName(appointment.assigned_to_name);
+      } else if (appointment.assigned_to) {
+        setAssignedUserName(`User #${appointment.assigned_to}`);
+      }
+
+      if (appointment.created_by_name) {
+        setCreatedUserName(appointment.created_by_name);
+      } else if (appointment.created_by) {
+        setCreatedUserName(`User #${appointment.created_by}`);
+      }
+
+      // Fetch customer name if not already available
+      if (appointment.client_name) {
+        setCustomerName(appointment.client_name);
+      } else if (appointment.client) {
+        try {
+          const customerResponse = await apiService.getClient(appointment.client.toString());
+          if (customerResponse.success && customerResponse.data) {
+            const customer = customerResponse.data;
+            setCustomerName(`${customer.first_name} ${customer.last_name}`);
+          } else {
+            setCustomerName(`Customer #${appointment.client}`);
+          }
+        } catch (error) {
+          console.error('Error fetching customer:', error);
+          setCustomerName(`Customer #${appointment.client}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching customer/user names:', error);
+    }
+  };
 
   if (!appointment) return null;
 
@@ -224,7 +273,7 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
     return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
@@ -250,30 +299,30 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
             </div>
 
             {/* Basic Information */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 Appointment Information
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="text-sm font-medium text-gray-600">Date & Time</label>
-                  <p className="text-sm text-gray-900">
+                  <p className="text-sm text-gray-900 mt-1">
                     {formatDateTime(appointment.date, appointment.time)}
                   </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-600">Duration</label>
-                  <p className="text-sm text-gray-900">{appointment.duration} minutes</p>
+                  <p className="text-sm text-gray-900 mt-1">{appointment.duration} minutes</p>
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="text-sm font-medium text-gray-600">Purpose</label>
-                  <p className="text-sm text-gray-900">{appointment.purpose}</p>
+                  <p className="text-sm text-gray-900 mt-1">{appointment.purpose}</p>
                 </div>
                 {appointment.location && (
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="text-sm font-medium text-gray-600">Location</label>
-                    <p className="text-sm text-gray-900 flex items-center gap-1">
+                    <p className="text-sm text-gray-900 mt-1 flex items-center gap-1">
                       <MapPin className="w-3 h-3" />
                       {appointment.location}
                     </p>
@@ -283,25 +332,33 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
             </Card>
 
             {/* Customer Information */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
                 <User className="w-4 h-4" />
                 Customer Information
               </h3>
-              <div>
-                <label className="text-sm font-medium text-gray-600">Customer ID</label>
-                <p className="text-sm text-gray-900">#{appointment.client}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Customer</label>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {customerName || `Customer #${appointment.client}`}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Customer ID</label>
+                  <p className="text-sm text-gray-900 mt-1">#{appointment.client}</p>
+                </div>
               </div>
             </Card>
 
             {/* Notes and Additional Information */}
             {(appointment.notes || appointment.outcome_notes) && (
-              <Card className="p-4">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   Notes & Details
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {appointment.notes && (
                     <div>
                       <label className="text-sm font-medium text-gray-600">Appointment Notes</label>
@@ -320,22 +377,22 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
 
             {/* Follow-up Information */}
             {appointment.requires_follow_up && (
-              <Card className="p-4">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-orange-500" />
                   Follow-up Required
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {appointment.follow_up_date && (
                     <div>
                       <label className="text-sm font-medium text-gray-600">Follow-up Date</label>
-                      <p className="text-sm text-gray-900">{appointment.follow_up_date}</p>
+                      <p className="text-sm text-gray-900 mt-1">{appointment.follow_up_date}</p>
                     </div>
                   )}
                   {appointment.follow_up_notes && (
                     <div>
                       <label className="text-sm font-medium text-gray-600">Follow-up Notes</label>
-                      <p className="text-sm text-gray-900">{appointment.follow_up_notes}</p>
+                      <p className="text-sm text-gray-900 mt-1">{appointment.follow_up_notes}</p>
                     </div>
                   )}
                 </div>
@@ -344,32 +401,43 @@ export function AppointmentDetailModal({ appointment, open, onClose }: Appointme
 
             {/* Next Action */}
             {appointment.next_action && (
-              <Card className="p-4">
-                <h3 className="font-semibold mb-3">Next Action</h3>
+              <Card className="p-6">
+                <h3 className="font-semibold mb-4">Next Action</h3>
                 <p className="text-sm text-gray-900">{appointment.next_action}</p>
               </Card>
             )}
 
             {/* System Information */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-3">System Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4">System Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                 <div>
                   <label className="font-medium text-gray-600">Created</label>
-                  <p className="text-gray-900">
+                  <p className="text-gray-900 mt-1">
                     {appointment.created_at ? new Date(appointment.created_at).toLocaleString() : 'N/A'}
                   </p>
+                  {createdUserName && (
+                    <p className="text-xs text-gray-500 mt-1">by {createdUserName}</p>
+                  )}
                 </div>
                 <div>
                   <label className="font-medium text-gray-600">Last Updated</label>
-                  <p className="text-gray-900">
+                  <p className="text-gray-900 mt-1">
                     {appointment.updated_at ? new Date(appointment.updated_at).toLocaleString() : 'N/A'}
                   </p>
                 </div>
+                {appointment.assigned_to && (
+                  <div>
+                    <label className="font-medium text-gray-600">Assigned To</label>
+                    <p className="text-gray-900 mt-1">
+                      {assignedUserName || `User #${appointment.assigned_to}`}
+                    </p>
+                  </div>
+                )}
                 {appointment.reminder_sent && (
                   <div>
                     <label className="font-medium text-gray-600">Reminder Sent</label>
-                    <p className="text-gray-900">Yes</p>
+                    <p className="text-gray-900 mt-1">Yes</p>
                   </div>
                 )}
               </div>

@@ -207,6 +207,7 @@ interface SalesPipeline {
 interface Appointment {
   id: number;
   client: number;
+  client_name?: string;
   tenant: number;
   date: string;
   time: string;
@@ -223,7 +224,9 @@ interface Appointment {
   outcome_notes?: string;
   next_action?: string;
   created_by?: number;
+  created_by_name?: string;
   assigned_to?: number;
+  assigned_to_name?: string;
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
@@ -563,6 +566,10 @@ class ApiService {
     return this.request(`/clients/clients/${id}/`);
   }
 
+  async getUser(id: string): Promise<ApiResponse<User>> {
+    return this.request(`/auth/team-members/${id}/`);
+  }
+
   async createClient(clientData: Partial<Client>): Promise<ApiResponse<Client>> {
     return this.request('/clients/clients/', {
       method: 'POST',
@@ -599,6 +606,21 @@ class ApiService {
 
   async getCustomerDropdownOptions(): Promise<ApiResponse<any>> {
     return this.request('/clients/clients/dropdown_options/');
+  }
+
+  // Customer Tags and Segmentation
+  async getCustomerTags(): Promise<ApiResponse<any[]>> {
+    return this.request('/clients/tags/');
+  }
+
+  async getCustomerTagCategories(): Promise<ApiResponse<any[]>> {
+    return this.request('/clients/tags/categories/');
+  }
+
+  async getCustomerTagsByCategory(category?: string): Promise<ApiResponse<any>> {
+    const queryParams = new URLSearchParams();
+    if (category) queryParams.append('category', category);
+    return this.request(`/clients/tags/by_category/${queryParams.toString() ? `?${queryParams}` : ''}`);
   }
 
   // Products
@@ -880,6 +902,49 @@ class ApiService {
     const response = await this.request<SalesPipeline[]>(`/sales/pipeline/${queryParams.toString() ? `?${queryParams}` : ''}`);
     console.log('getSalesPipeline response:', response);
     return response;
+  }
+
+  // Platform-wide sales pipeline (for platform admin to see all tenants)
+  async getPlatformSalesPipeline(params?: {
+    page?: number;
+    stage?: string;
+    tenant?: string;
+  }): Promise<ApiResponse<SalesPipeline[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.stage) queryParams.append('stage', params.stage);
+    if (params?.tenant) queryParams.append('tenant', params.tenant);
+    // Add platform flag to indicate this is a platform-wide request
+    queryParams.append('platform', 'true');
+
+    const response = await this.request<SalesPipeline[]>(`/sales/pipeline/${queryParams.toString() ? `?${queryParams}` : ''}`);
+    console.log('getPlatformSalesPipeline response:', response);
+    return response;
+  }
+
+  // CRM sales pipeline (for platform admin to sell the CRM platform)
+  async getCRMSalesPipeline(params?: {
+    page?: number;
+    stage?: string;
+    source?: string;
+  }): Promise<ApiResponse<any[]>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.stage) queryParams.append('stage', params.stage);
+      if (params?.source) queryParams.append('source', params.source);
+
+      const response = await this.request<any[]>(`/crm/sales/pipeline/${queryParams.toString() ? `?${queryParams}` : ''}`);
+      console.log('getCRMSalesPipeline response:', response);
+      return response;
+    } catch (error) {
+      // Silently handle missing endpoint - this is expected until backend is implemented
+      return {
+        success: true,
+        data: [],
+        message: 'CRM sales pipeline data not available yet'
+      };
+    }
   }
 
   // My Sales Pipeline (for salespeople to see only their own pipeline)

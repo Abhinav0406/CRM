@@ -645,6 +645,11 @@ export type NotificationType =
   | 'payment_received'
   | 'low_stock'
   | 'high_demand'
+  | 'stock_transfer_request'
+  | 'stock_transfer_approved'
+  | 'stock_transfer_completed'
+  | 'stock_transfer_cancelled'
+  | 'stock_transfer_rejected'
   | 'custom';
 
 /**

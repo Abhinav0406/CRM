@@ -7,6 +7,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Eye } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
+import { AppointmentDetailModal } from '@/components/appointments/AppointmentDetailModal';
 
 // Local interface to match backend serializer
 interface Appointment {
@@ -41,6 +42,8 @@ export default function ManagerAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   useEffect(() => {
     fetchAppointments();
@@ -65,7 +68,9 @@ export default function ManagerAppointmentsPage() {
   };
 
   const filteredAppointments = Array.isArray(appointments) ? appointments.filter(appointment => {
-    const matchesSearch = appointment.purpose.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = appointment.purpose.toLowerCase().includes(searchLower) ||
+                         (appointment.client_name && appointment.client_name.toLowerCase().includes(searchLower));
     const matchesStatus = statusFilter === 'all' || appointment.status === statusFilter;
     
     return matchesSearch && matchesStatus;
@@ -78,6 +83,17 @@ export default function ManagerAppointmentsPage() {
     { label: 'Cancelled', value: Array.isArray(appointments) ? appointments.filter(a => a.status === 'cancelled').length : 0 },
   ];
 
+  const handleViewAppointment = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleAppointmentUpdated = () => {
+    setIsDetailModalOpen(false);
+    setSelectedAppointment(null);
+    fetchAppointments(); // Refresh the list
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -87,6 +103,14 @@ export default function ManagerAppointmentsPage() {
   }
   return (
     <div className="flex flex-col gap-8">
+      <AppointmentDetailModal
+        appointment={selectedAppointment}
+        open={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedAppointment(null);
+        }}
+      />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-semibold text-text-primary">Appointments</h1>
@@ -104,14 +128,20 @@ export default function ManagerAppointmentsPage() {
       </div>
       <Card className="p-4 flex flex-col gap-4">
         <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-          <Input placeholder="Search by customer or type..." className="w-full md:w-80" />
-          <Select>
+          <Input 
+            placeholder="Search by customer or type..." 
+            className="w-full md:w-80"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="upcoming">Upcoming</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
@@ -149,7 +179,12 @@ export default function ManagerAppointmentsPage() {
                       <Badge variant="outline" className="capitalize text-xs">{a.status}</Badge>
                     </td>
                     <td className="px-4 py-2">
-                      <Button variant="ghost" size="icon">
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => handleViewAppointment(a)}
+                        title="View appointment details"
+                      >
                         <Eye className="w-4 h-4" />
                       </Button>
                     </td>

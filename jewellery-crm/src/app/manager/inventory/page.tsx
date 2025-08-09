@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { apiService, Product } from '@/lib/api-service';
+import AuthGuard from '@/components/auth/AuthGuard';
 
 export default function ManagerInventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -91,81 +92,83 @@ export default function ManagerInventoryPage() {
     );
   }
   return (
-    <div className="flex flex-col gap-8">
-      <div className="mb-2">
-        <h1 className="text-2xl font-semibold text-text-primary">Inventory</h1>
-        <p className="text-text-secondary mt-1">Track and manage your store's inventory</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statsCards.map((s: any) => (
-          <Card key={s.label} className="flex flex-col gap-1 p-5">
-            <div className="text-xl font-bold text-text-primary">{s.value}</div>
-            <div className="text-sm text-text-secondary font-medium">{s.label}</div>
-          </Card>
-        ))}
-      </div>
-      <Card className="p-4 flex flex-col gap-4">
-        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-          <Input placeholder="Search by product or SKU..." className="w-full md:w-80" />
-          <Select>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="in stock">In Stock</SelectItem>
-              <SelectItem value="low stock">Low Stock</SelectItem>
-              <SelectItem value="out of stock">Out of Stock</SelectItem>
-            </SelectContent>
-          </Select>
+    <AuthGuard requiredRole="manager">
+      <div className="flex flex-col gap-8">
+        <div className="mb-2">
+          <h1 className="text-2xl font-semibold text-text-primary">Inventory</h1>
+          <p className="text-text-secondary mt-1">Track and manage your store's inventory</p>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Product</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">SKU</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Stock</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Status</th>
-                <th className="px-4 py-2 text-left font-semibold text-text-secondary">Last Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {statsCards.map((s: any) => (
+            <Card key={s.label} className="flex flex-col gap-1 p-5">
+              <div className="text-xl font-bold text-text-primary">{s.value}</div>
+              <div className="text-sm text-text-secondary font-medium">{s.label}</div>
+            </Card>
+          ))}
+        </div>
+        <Card className="p-4 flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+            <Input placeholder="Search by product or SKU..." className="w-full md:w-80" />
+            <Select>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="in stock">In Stock</SelectItem>
+                <SelectItem value="low stock">Low Stock</SelectItem>
+                <SelectItem value="out of stock">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-text-muted">
-                    No products found.
-                  </td>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Product</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">SKU</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Stock</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Status</th>
+                  <th className="px-4 py-2 text-left font-semibold text-text-secondary">Last Updated</th>
                 </tr>
-              ) : (
-                filteredProducts.map((item, i) => {
-                  const getStockStatus = (product: Product) => {
-                    if (product.quantity === 0) return 'out of stock';
-                    if (product.quantity <= product.min_quantity) return 'low stock';
-                    return 'in stock';
-                  };
-                  
-                  return (
-                    <tr key={i} className="border-t border-border hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-text-primary">{item.name}</td>
-                      <td className="px-4 py-2 text-text-primary">{item.sku}</td>
-                      <td className="px-4 py-2 text-text-primary">{item.quantity}</td>
-                      <td className="px-4 py-2">
-                        <Badge variant="outline" className="capitalize text-xs">
-                          {getStockStatus(item)}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-2 text-text-secondary">
-                        {new Date(item.updated_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
+              </thead>
+              <tbody>
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-text-muted">
+                      No products found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((item, i) => {
+                    const getStockStatus = (product: Product) => {
+                      if (product.quantity === 0) return 'out of stock';
+                      if (product.quantity <= product.min_quantity) return 'low stock';
+                      return 'in stock';
+                    };
+                    
+                    return (
+                      <tr key={i} className="border-t border-border hover:bg-gray-50">
+                        <td className="px-4 py-2 font-medium text-text-primary">{item.name}</td>
+                        <td className="px-4 py-2 text-text-primary">{item.sku}</td>
+                        <td className="px-4 py-2 text-text-primary">{item.quantity}</td>
+                        <td className="px-4 py-2">
+                          <Badge variant="outline" className="capitalize text-xs">
+                            {getStockStatus(item)}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-2 text-text-secondary">
+                          {new Date(item.updated_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </AuthGuard>
   );
 }

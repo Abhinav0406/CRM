@@ -95,6 +95,12 @@ const navigationItems: NavItem[] = [
     roles: ['business_admin'],
   },
   {
+    title: 'Customer Segmentation',
+    href: '/business-admin/segmentation',
+    icon: BarChart3,
+    roles: ['business_admin'],
+  },
+  {
     title: 'Sales Pipeline',
     href: '/business-admin/pipeline',
     icon: TrendingUp,
@@ -170,11 +176,17 @@ const navigationItems: NavItem[] = [
       //},
     ],
   },
-  // Platform Admin Navigation (unchanged)
+  // Platform Admin Navigation
   {
     title: 'Dashboard',
     href: '/platform/dashboard',
     icon: Home,
+    roles: ['platform_admin'],
+  },
+  {
+    title: 'CRM Sales Pipeline',
+    href: '/platform/pipeline',
+    icon: TrendingUp,
     roles: ['platform_admin'],
   },
   {
@@ -294,6 +306,12 @@ const navigationItems: NavItem[] = [
     title: 'Analytics',
     href: '/manager/analytics',
     icon: BarChart3,
+    roles: ['manager'],
+  },
+  {
+    title: 'Escalations',
+    href: '/manager/escalations',
+    icon: AlertTriangle,
     roles: ['manager'],
   },
   {
@@ -604,7 +622,7 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="w-full justify-start px-3 py-3 h-auto text-sidebar-foreground hover:bg-sidebar-accent rounded-lg transition-colors duration-200"
+              className="w-full justify-start px-3 py-3 h-auto ext-sidebar-foreground rounded-lg transition-colors duration-200"
             >
               <Avatar className="w-8 h-8 mr-3">
                 <AvatarImage src={undefined} />
@@ -640,28 +658,6 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
               Preferences
             </DropdownMenuItem>
             
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Demo: Switch Role</DropdownMenuLabel>
-            
-            <DropdownMenuItem>
-              <Building2 className="mr-2 h-4 w-4" />
-              Platform Admin
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem>
-              <Gem className="mr-2 h-4 w-4" />
-              Business Admin
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              Store Manager
-            </DropdownMenuItem>
-            
-            <DropdownMenuItem>
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Sales Team
-            </DropdownMenuItem>
             
             <DropdownMenuSeparator />
             

@@ -18,6 +18,11 @@ class Notification(models.Model):
         ('announcement', 'Announcement'),
         ('escalation', 'Escalation'),
         ('marketing_campaign', 'Marketing Campaign'),
+        ('stock_transfer_request', 'Stock Transfer Request'),
+        ('stock_transfer_approved', 'Stock Transfer Approved'),
+        ('stock_transfer_completed', 'Stock Transfer Completed'),
+        ('stock_transfer_cancelled', 'Stock Transfer Cancelled'),
+        ('stock_transfer_rejected', 'Stock Transfer Rejected'),
     ]
     
     PRIORITY_CHOICES = [
