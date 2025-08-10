@@ -82,28 +82,42 @@ class ChangePasswordView(APIView):
         old_password = request.data.get('old_password')
         new_password = request.data.get('new_password')
 
+        # Validate input
         if not old_password or not new_password:
             return Response({
                 'error': 'Both old_password and new_password are required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # Check if old password is correct
         if not user.check_password(old_password):
             return Response({
-                'error': 'Old password is incorrect'
+                'error': 'Current password is incorrect'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # Check if new password is different from old password
+        if old_password == new_password:
+            return Response({
+                'error': 'New password must be different from current password'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate new password strength
         try:
             validate_password(new_password, user)
         except ValidationError as e:
             return Response({
-                'error': e.messages
+                'error': e.messages[0] if e.messages else 'Password is not strong enough'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        # Change password
         user.set_password(new_password)
         user.save()
 
+        # Log the password change for security audit
+        print(f"Password changed for user: {user.username} ({user.role}) at {timezone.now()}")
+
         return Response({
-            'message': 'Password changed successfully'
+            'message': 'Password changed successfully',
+            'success': True
         }, status=status.HTTP_200_OK)
 
 

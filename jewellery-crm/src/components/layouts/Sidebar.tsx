@@ -29,6 +29,7 @@ import {
   Home,
   FileText,
   MessageSquare,
+  MessageCircle,
   Globe,
   CreditCard,
   User,
@@ -149,6 +150,18 @@ const navigationItems: NavItem[] = [
         roles: ['business_admin'],
       },
     ],
+  },
+  {
+    title: 'WhatsApp',
+    href: '/business-admin/whatsapp',
+    icon: MessageCircle,
+    roles: ['business_admin'],
+  },
+  {
+    title: 'Profile',
+    href: '/business-admin/profile',
+    icon: User,
+    roles: ['business_admin'],
   },
   {
     title: 'Settings',
@@ -315,6 +328,12 @@ const navigationItems: NavItem[] = [
     roles: ['manager'],
   },
   {
+    title: 'WhatsApp',
+    href: '/manager/whatsapp',
+    icon: MessageCircle,
+    roles: ['manager'],
+  },
+  {
     title: 'My Profile',
     href: '/manager/profile',
     icon: User,
@@ -470,6 +489,28 @@ const navigationItems: NavItem[] = [
     roles: ['telecaller'],
   },
 ];
+
+/**
+ * Get the profile route based on user role
+ */
+const getProfileRoute = (userRole: string): string | null => {
+  switch (userRole) {
+    case 'business_admin':
+      return '/business-admin/profile';
+    case 'platform_admin':
+      return '/platform/profile';
+    case 'manager':
+      return '/manager/profile';
+    case 'inhouse_sales':
+      return '/sales/profile';
+    case 'tele_calling':
+      return '/telecaller/profile';
+    case 'marketing':
+      return '/marketing/profile';
+    default:
+      return null;
+  }
+};
 
 /**
  * Sidebar Component
@@ -648,7 +689,12 @@ export function Sidebar({ isOpen = true, onClose, className, role }: SidebarProp
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
             
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => {
+              const profileRoute = getProfileRoute(user.role);
+              if (profileRoute) {
+                router.push(profileRoute);
+              }
+            }}>
               <User className="mr-2 h-4 w-4" />
               Profile Settings
             </DropdownMenuItem>

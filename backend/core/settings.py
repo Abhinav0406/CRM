@@ -178,6 +178,12 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001').split(',')
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = True  # For development only
+
+# WhatsApp Integration (WAHA)
+WAHA_BASE_URL = config('WAHA_BASE_URL', default='http://localhost:3001')
+WAHA_SESSION = config('WAHA_SESSION', default='jewelry_crm')
+WAHA_API_KEY = config('WAHA_API_KEY', default=None)
+SITE_URL = config('SITE_URL', default='http://localhost:8000')
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',

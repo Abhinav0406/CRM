@@ -578,21 +578,25 @@ class BusinessDashboardView(APIView):
                 )
                 
                 for manager in managers:
-                    manager_sales_filter = {**base_sales_filter}
-                    if user.role == 'manager' and user.store:
-                        manager_sales_filter['client__store'] = user.store
+                    # Filter sales and pipelines specific to this manager
+                    manager_sales_filter = {**base_sales_filter, 'sales_representative': manager}
                     
-                    manager_sales = Sale.objects.filter(
+                    # Get all-time sales for this manager (not just last 30 days)
+                    manager_all_time_sales = Sale.objects.filter(
+                        **manager_sales_filter
+                    ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+                    
+                    # Get recent sales (last 30 days)
+                    manager_recent_sales = Sale.objects.filter(
                         **manager_sales_filter,
                         created_at__gte=start_date,
                         created_at__lte=end_date
                     ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
                     
-                    manager_pipeline_filter = {**base_pipeline_filter}
-                    if user.role == 'manager' and user.store:
-                        manager_pipeline_filter['client__store'] = user.store
+                    manager_pipeline_filter = {**base_pipeline_filter, 'sales_representative': manager}
                     
-                    manager_closed_won = SalesPipeline.objects.filter(
+                    # Get all-time closed won pipelines
+                    manager_all_time_closed_won = SalesPipeline.objects.filter(
                         **manager_pipeline_filter,
                         stage='closed_won'
                     ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
@@ -602,20 +606,39 @@ class BusinessDashboardView(APIView):
                         stage='closed_won'
                     ).count()
                     
-                    # Total manager revenue = sales + closed won pipeline
-                    manager_total_revenue = manager_sales + manager_closed_won
+                    # Total manager revenue = all-time sales + all-time closed won pipeline
+                    manager_total_revenue = manager_all_time_sales + manager_all_time_closed_won
                     
-                    if float(manager_total_revenue) > 0:
+                    # Include managers with any revenue or deals (even if 0 recent activity)
+                    if float(manager_total_revenue) > 0 or manager_deals > 0:
                         top_managers.append({
                             'id': manager.id,
                             'name': f"{manager.first_name} {manager.last_name}",
                             'revenue': float(manager_total_revenue),
-                            'deals_closed': manager_deals
+                            'deals_closed': manager_deals,
+                            'recent_revenue': float(manager_recent_sales)
+                        })
+                    
+                    # Debug logging
+                    print(f"Manager {manager.first_name} {manager.last_name}: All-time Sales={manager_all_time_sales}, Recent Sales={manager_recent_sales}, Closed Won={manager_all_time_closed_won}, Deals={manager_deals}")
+                
+                # If no managers with sales found, show all managers for debugging
+                if not top_managers:
+                    print("No managers with sales found, showing all active managers...")
+                    for manager in managers:
+                        top_managers.append({
+                            'id': manager.id,
+                            'name': f"{manager.first_name} {manager.last_name}",
+                            'revenue': 0.0,
+                            'deals_closed': 0,
+                            'recent_revenue': 0.0
                         })
                 
                 # Sort managers by revenue
                 top_managers.sort(key=lambda x: x['revenue'], reverse=True)
                 top_managers = top_managers[:5]  # Top 5 managers
+                
+                print(f"Final top_managers list: {len(top_managers)} managers found")
             
             # 7. Top Performing Salesmen
             salesmen = User.objects.filter(

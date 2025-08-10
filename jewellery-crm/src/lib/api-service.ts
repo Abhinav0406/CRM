@@ -1,5 +1,5 @@
 // API Service for connecting to Django backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
   data: T;
@@ -472,6 +472,29 @@ class ApiService {
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
     return this.request('/auth/profile/');
+  }
+
+  async changePassword(data: {
+    old_password: string;
+    new_password: string;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/auth/change-password/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProfile(profileData: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  }): Promise<ApiResponse<User>> {
+    return this.request('/auth/profile/update/', {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
   }
 
   // Note: Tenant and store names are now included in user profile data
@@ -1607,6 +1630,52 @@ class ApiService {
     return this.request('/notifications/push/unsubscribe/', {
       method: 'POST',
     });
+  }
+
+  // ================================
+  // WHATSAPP INTEGRATION ENDPOINTS
+  // ================================
+
+  // Get WhatsApp connection status
+  async getWhatsAppStatus(): Promise<ApiResponse<any>> {
+    return this.request('/integrations/whatsapp/status/');
+  }
+
+  // Start WhatsApp session
+  async startWhatsAppSession(): Promise<ApiResponse<any>> {
+    return this.request('/integrations/whatsapp/session/start/', {
+      method: 'POST',
+    });
+  }
+
+  // Send single WhatsApp message
+  async sendWhatsAppMessage(data: {
+    phone: string;
+    message: string;
+    type?: string;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/integrations/whatsapp/send/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Send bulk WhatsApp messages
+  async sendBulkWhatsAppMessages(data: {
+    recipients: string[];
+    message: string;
+    template_type?: string;
+    template_data?: any;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/integrations/whatsapp/bulk/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Get WhatsApp templates
+  async getWhatsAppTemplates(): Promise<ApiResponse<any[]>> {
+    return this.request('/integrations/whatsapp/templates/');
   }
 }
 
