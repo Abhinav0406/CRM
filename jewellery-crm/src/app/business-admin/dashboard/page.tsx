@@ -38,6 +38,7 @@ interface DashboardData {
     revenue: number;
     deals_closed: number;
     avatar?: string;
+    store_name?: string; // Added store_name to the interface
   }>;
   
   top_salesmen: Array<{
@@ -46,6 +47,7 @@ interface DashboardData {
     revenue: number;
     deals_closed: number;
     avatar?: string;
+    store_name?: string; // Added store_name to the interface
   }>;
 }
 
@@ -311,6 +313,11 @@ export default function BusinessAdminDashboard() {
                         <div className="font-medium text-sm">{manager.name}</div>
                         <div className="text-xs text-text-secondary">
                           {manager.deals_closed} deals closed
+                          {manager.store_name && (
+                            <span className="ml-2 text-blue-600 font-medium">
+                              • {manager.store_name}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -352,6 +359,11 @@ export default function BusinessAdminDashboard() {
                         <div className="font-medium text-sm">{salesman.name}</div>
                         <div className="text-xs text-text-secondary">
                           {salesman.deals_closed} deals closed
+                          {salesman.store_name && (
+                            <span className="ml-2 text-green-600 font-medium">
+                              • {salesman.store_name}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, ArrowRight, Clock, CheckCircle, XCircle, AlertTriangle, Search, X } from 'lucide-react';
+import { Package, ArrowRight, Clock, CheckCircle, XCircle, AlertTriangle, Search, X, Store, Globe, Download } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
 import { useAuth } from '@/hooks/useAuth';
 import type { ProductInventory } from '@/lib/api-service';
@@ -54,13 +54,13 @@ interface Store {
   name: string;
 }
 
-interface StockTransferModalProps {
+interface BusinessAdminStockTransferModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function StockTransferModal({ isOpen, onClose, onSuccess }: StockTransferModalProps) {
+export default function BusinessAdminStockTransferModal({ isOpen, onClose, onSuccess }: BusinessAdminStockTransferModalProps) {
   const { user } = useAuth();
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -71,19 +71,17 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
   const [productSearch, setProductSearch] = useState('');
   const [inventory, setInventory] = useState<ProductInventory[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
-  const [createForm, setCreateForm] = useState<{
-    to_store: string;
-    product: string;
-    quantity: number;
-    reason: string;
-    notes: string;
-  }>({
+  const [createForm, setCreateForm] = useState({
+    from_store: '',
     to_store: '',
     product: '',
     quantity: 0,
     reason: '',
     notes: '',
   });
+  const [filterStore, setFilterStore] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -95,7 +93,7 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
     try {
       setLoading(true);
       
-      // Fetch transfers
+      // Fetch all transfers across all stores (business admin can see everything)
       const transfersResponse = await apiService.getStockTransfers();
       if (transfersResponse.success && transfersResponse.data) {
         let transfersData: StockTransfer[] = [];
@@ -112,9 +110,9 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
         setTransfers(transfersData);
       }
 
-      // Fetch products - Get global catalogue for transfer requests
+      // Fetch all products from all stores
       const productsResponse = await apiService.getProducts({
-        scope: 'all' // Get all products (global + store) for transfer requests
+        scope: 'all'
       });
       if (productsResponse.success && productsResponse.data) {
         let productsData: Product[] = [];
@@ -131,26 +129,7 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
         setProducts(productsData);
       }
 
-      // Fetch inventory data for current store
-      if (user?.store) {
-        const inventoryResponse = await apiService.getInventory();
-        if (inventoryResponse.success && inventoryResponse.data) {
-          let inventoryData: ProductInventory[] = [];
-          if (Array.isArray(inventoryResponse.data)) {
-            inventoryData = inventoryResponse.data;
-          } else if (typeof inventoryResponse.data === 'object' && inventoryResponse.data !== null) {
-            const data = inventoryResponse.data as any;
-            if (data.results && Array.isArray(data.results)) {
-              inventoryData = data.results;
-            } else if (data.data && Array.isArray(data.data)) {
-              inventoryData = data.data;
-            }
-          }
-          setInventory(inventoryData);
-        }
-      }
-
-      // Fetch stores
+      // Fetch all stores
       const storesResponse = await apiService.getStores();
       if (storesResponse.success && storesResponse.data) {
         let storesData: Store[] = [];
@@ -164,9 +143,24 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
             storesData = data.data;
           }
         }
-        // Filter out the current user's store from the destination options
-        storesData = storesData.filter(store => store.id !== user?.store);
         setStores(storesData);
+      }
+
+      // Fetch inventory data for all stores
+      const inventoryResponse = await apiService.getInventory();
+      if (inventoryResponse.success && inventoryResponse.data) {
+        let inventoryData: ProductInventory[] = [];
+        if (Array.isArray(inventoryResponse.data)) {
+          inventoryData = inventoryResponse.data;
+        } else if (typeof inventoryResponse.data === 'object' && inventoryResponse.data !== null) {
+          const data = inventoryResponse.data as any;
+          if (data.results && Array.isArray(data.results)) {
+            inventoryData = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            inventoryData = data.data;
+          }
+        }
+        setInventory(inventoryData);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -180,38 +174,20 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
 
   const handleCreateTransfer = async () => {
     try {
-      if (!user?.store) {
-        console.error('User store not found');
-        return;
-      }
-
-      // Validate stock availability
-      const stockInfo = canTransferProduct(parseInt(createForm.product));
-      if (!stockInfo.canTransfer) {
-        alert(`Cannot request transfer: ${stockInfo.reason}`);
-        return;
-      }
-
-      // Check if requested quantity is available
-      const productInventory = inventory.find(inv => inv.product === parseInt(createForm.product));
-      if (productInventory && createForm.quantity > productInventory.quantity) {
-        alert(`Cannot request ${createForm.quantity} units. Only ${productInventory.quantity} units available in stock.`);
-        return;
-      }
-
       const response = await apiService.createStockTransfer({
-        from_store: user.store,
+        from_store: parseInt(createForm.from_store),
         to_store: parseInt(createForm.to_store),
         product: parseInt(createForm.product),
         quantity: createForm.quantity,
         reason: createForm.reason,
         notes: createForm.notes,
-        requested_by: user.id,
+        requested_by: user?.id || 0,
       });
 
       if (response.success) {
         setIsCreateModalOpen(false);
         setCreateForm({
+          from_store: '',
           to_store: '',
           product: '',
           quantity: 0,
@@ -263,7 +239,75 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
     }
   };
 
-  // Filter products based on search and stock availability
+  // Export all transfer data to CSV
+  const exportTransfers = async () => {
+    try {
+      setExporting(true);
+      
+      // Convert transfers to CSV format
+      const csvContent = convertTransfersToCSV(transfers);
+      
+      // Create and download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `product-transfers-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error exporting transfers:', error);
+      alert('Failed to export transfers');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Convert transfers data to CSV format
+  const convertTransfersToCSV = (transfers: StockTransfer[]) => {
+    const headers = [
+      'Transfer ID',
+      'Product Name',
+      'SKU',
+      'From Store',
+      'To Store',
+      'Quantity',
+      'Status',
+      'Reason',
+      'Requested By',
+      'Approved By',
+      'Created Date',
+      'Transfer Date',
+      'Notes'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    transfers.forEach(transfer => {
+      const row = [
+        transfer.id,
+        `"${transfer.product_name || ''}"`,
+        transfer.product_sku || '',
+        `"${transfer.from_store_name || ''}"`,
+        `"${transfer.to_store_name || ''}"`,
+        transfer.quantity,
+        transfer.status,
+        `"${transfer.reason || ''}"`,
+        `"${transfer.requested_by_name || ''}"`,
+        `"${transfer.approved_by_name || ''}"`,
+        transfer.created_at,
+        transfer.transfer_date || '',
+        `"${transfer.notes || ''}"`
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    return csvRows.join('\n');
+  };
+
+  // Filter products based on search
   const filterProducts = () => {
     if (!productSearch.trim()) {
       setFilteredProducts(products);
@@ -272,65 +316,34 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
 
     const searchLower = productSearch.toLowerCase();
     const filtered = products.filter(product => {
-      const matchesSearch = product.name.toLowerCase().includes(searchLower) || 
-                           product.sku.toLowerCase().includes(searchLower);
-      
-      if (!matchesSearch) return false;
-      
-      // Check if product has sufficient stock in current store
-      const productInventory = inventory.find(inv => inv.product === product.id);
-      if (productInventory) {
-        return productInventory.quantity > 0 && !productInventory.is_out_of_stock;
-      }
-      
-      return true; // Include products without inventory data
+      return product.name.toLowerCase().includes(searchLower) || 
+             product.sku.toLowerCase().includes(searchLower);
     });
     
     setFilteredProducts(filtered);
   };
 
-  // Check if a product can be transferred (has sufficient stock)
-  const canTransferProduct = (productId: number): { canTransfer: boolean; reason?: string; stockLevel: string } => {
-    const productInventory = inventory.find(inv => inv.product === productId);
+  // Filter transfers based on store and status
+  const getFilteredTransfers = () => {
+    let filtered = transfers;
     
-    if (!productInventory) {
-      return { canTransfer: false, reason: 'No inventory data available', stockLevel: 'Unknown' };
+    if (filterStore !== 'all') {
+      filtered = filtered.filter(transfer => 
+        transfer.from_store_name === filterStore || transfer.to_store_name === filterStore
+      );
     }
     
-    if (productInventory.is_out_of_stock || productInventory.quantity === 0) {
-      return { canTransfer: false, reason: 'Product is out of stock', stockLevel: 'Out of Stock' };
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(transfer => transfer.status === filterStatus);
     }
     
-    if (productInventory.is_low_stock) {
-      return { canTransfer: false, reason: 'Product has low stock', stockLevel: 'Low Stock' };
-    }
-    
-    return { canTransfer: true, stockLevel: 'In Stock' };
-  };
-
-  // Get stock status badge for a product
-  const getStockStatusBadge = (productId: number) => {
-    const productInventory = inventory.find(inv => inv.product === productId);
-    
-    if (!productInventory) {
-      return <Badge variant="outline">No Data</Badge>;
-    }
-    
-    if (productInventory.is_out_of_stock || productInventory.quantity === 0) {
-      return <Badge variant="destructive">Out of Stock</Badge>;
-    }
-    
-    if (productInventory.is_low_stock) {
-      return <Badge variant="secondary">Low Stock</Badge>;
-    }
-    
-    return <Badge variant="default">In Stock ({productInventory.quantity})</Badge>;
+    return filtered;
   };
 
   // Update filtered products when search changes
   useEffect(() => {
     filterProducts();
-  }, [productSearch, products, inventory]);
+  }, [productSearch, products]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -357,15 +370,20 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
     });
   };
 
+  const filteredTransfers = getFilteredTransfers();
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Stock Transfers
+              <Globe className="w-5 h-5" />
+              All Store Product Transfers
             </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Business Admin View - Monitor all stock transfers across all stores
+            </p>
           </DialogHeader>
 
           {loading ? (
@@ -380,23 +398,65 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
               {/* Header Actions */}
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-lg font-semibold">Transfer Requests</h3>
+                  <h3 className="text-lg font-semibold">Transfer Overview</h3>
                   <p className="text-sm text-muted-foreground">
-                    Manage inter-store stock transfers
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Available products: {products.length} | Transferable: {filteredProducts.filter(p => canTransferProduct(p.id).canTransfer).length}
+                    Total transfers: {transfers.length} | Filtered: {filteredTransfers.length}
                   </p>
                 </div>
-                <Button onClick={() => setIsCreateModalOpen(true)}>
-                  <Package className="w-4 h-4 mr-2" />
-                  Request Transfer
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={() => setIsCreateModalOpen(true)}>
+                    <Package className="w-4 h-4 mr-2" />
+                    Create Transfer
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={exportTransfers}
+                    disabled={exporting}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    {exporting ? 'Exporting...' : 'Export All'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <Label>Filter by Store</Label>
+                  <Select value={filterStore} onValueChange={setFilterStore}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Stores" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Stores</SelectItem>
+                      {Array.from(new Set(transfers.map(t => t.from_store_name).concat(transfers.map(t => t.to_store_name)))).filter(Boolean).map((storeName) => (
+                        <SelectItem key={storeName} value={storeName}>
+                          {storeName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label>Filter by Status</Label>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Transfers List */}
               <div className="space-y-2">
-                {transfers.map((transfer) => (
+                {filteredTransfers.map((transfer) => (
                   <Card key={transfer.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
@@ -471,11 +531,13 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
                   </Card>
                 ))}
 
-                {transfers.length === 0 && (
+                {filteredTransfers.length === 0 && (
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center h-32">
                       <Package className="w-8 h-8 text-muted-foreground mb-2" />
-                      <p className="text-muted-foreground">No transfer requests found</p>
+                      <p className="text-muted-foreground">
+                        {transfers.length === 0 ? 'No transfer requests found' : 'No transfers match your filters'}
+                      </p>
                     </CardContent>
                   </Card>
                 )}
@@ -489,19 +551,34 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Request Stock Transfer</DialogTitle>
+            <DialogTitle>Create Stock Transfer</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Total products available: {products.length} | 
-              Transferable: {products.filter(p => canTransferProduct(p.id).canTransfer).length}
+              Business Admin - Create transfers between any stores
             </p>
           </DialogHeader>
           
           <div className="space-y-4">
             <div>
+              <Label htmlFor="from_store">From Store</Label>
+              <Select value={createForm.from_store} onValueChange={(value) => setCreateForm({ ...createForm, from_store: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source store" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id.toString()}>
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
               <Label htmlFor="to_store">To Store</Label>
               <Select value={createForm.to_store} onValueChange={(value) => setCreateForm({ ...createForm, to_store: value })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select store" />
+                  <SelectValue placeholder="Select destination store" />
                 </SelectTrigger>
                 <SelectContent>
                   {stores.map((store) => (
@@ -516,12 +593,6 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
             <div>
               <Label htmlFor="product">Product</Label>
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Search products by name or SKU</span>
-                  <span className="font-medium">
-                    {filteredProducts.length} of {products.length} products
-                  </span>
-                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input
@@ -544,42 +615,25 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
                 
                 <div className="max-h-48 overflow-y-auto border rounded-md">
                   {filteredProducts.length > 0 ? (
-                    filteredProducts.map((product) => {
-                      const stockInfo = canTransferProduct(product.id);
-                      const isDisabled = !stockInfo.canTransfer;
-                      
-                      return (
-                        <div
-                          key={product.id}
-                          className={`p-3 border-b last:border-b-0 cursor-pointer hover:bg-muted ${
-                            isDisabled ? 'opacity-50 cursor-not-allowed' : ''
-                          } ${createForm.product === product.id.toString() ? 'bg-primary/10 border-primary' : ''}`}
-                          onClick={() => {
-                            if (!isDisabled) {
-                              setCreateForm({ ...createForm, product: product.id.toString() });
-                            }
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="font-medium">{product.name}</div>
-                              <div className="text-sm text-muted-foreground">SKU: {product.sku}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {product.scope === 'global' ? 'Global Product' : 'Store Product'}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {getStockStatusBadge(product.id)}
-                              {isDisabled && (
-                                <div className="text-xs text-red-600 max-w-32 text-right">
-                                  {stockInfo.reason}
-                                </div>
-                              )}
+                    filteredProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        className={`p-3 border-b last:border-b-0 cursor-pointer hover:bg-muted ${
+                          createForm.product === product.id.toString() ? 'bg-primary/10 border-primary' : ''
+                        }`}
+                        onClick={() => setCreateForm({ ...createForm, product: product.id.toString() })}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium">{product.name}</div>
+                            <div className="text-sm text-muted-foreground">SKU: {product.sku}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {product.scope === 'global' ? 'Global Product' : 'Store Product'}
                             </div>
                           </div>
                         </div>
-                      );
-                    })
+                      </div>
+                    ))
                   ) : (
                     <div className="p-3 text-center text-muted-foreground">
                       {productSearch ? 'No products found matching your search' : 'No products available'}
@@ -597,26 +651,13 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
             
             <div>
               <Label htmlFor="quantity">Quantity</Label>
-              <div className="space-y-2">
-                <Input
-                  id="quantity"
-                  type="number"
-                  min="1"
-                  value={createForm.quantity}
-                  onChange={(e) => setCreateForm({ ...createForm, quantity: parseInt(e.target.value) || 0 })}
-                />
-                {createForm.product && (
-                  <div className="text-sm text-muted-foreground">
-                    {(() => {
-                      const productInventory = inventory.find(inv => inv.product === parseInt(createForm.product));
-                      if (productInventory) {
-                        return `Available stock: ${productInventory.quantity} units`;
-                      }
-                      return 'Stock information not available';
-                    })()}
-                  </div>
-                )}
-              </div>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={createForm.quantity}
+                onChange={(e) => setCreateForm({ ...createForm, quantity: parseInt(e.target.value) || 0 })}
+              />
             </div>
             
             <div>
@@ -646,14 +687,15 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
               <Button 
                 onClick={handleCreateTransfer}
                 disabled={
-                  Boolean(createForm.to_store === '') || 
-                  Boolean(createForm.product === '') || 
-                  Boolean(createForm.quantity <= 0) || 
-                  Boolean(createForm.reason === '') ||
-                  Boolean(createForm.product && !canTransferProduct(parseInt(createForm.product)).canTransfer)
+                  !createForm.from_store || 
+                  !createForm.to_store || 
+                  !createForm.product || 
+                  createForm.quantity <= 0 || 
+                  createForm.reason === '' ||
+                  createForm.from_store === createForm.to_store
                 }
               >
-                Request Transfer
+                Create Transfer
               </Button>
             </div>
           </div>
@@ -661,4 +703,4 @@ export default function StockTransferModal({ isOpen, onClose, onSuccess }: Stock
       </Dialog>
     </>
   );
-} 
+}

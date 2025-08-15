@@ -164,6 +164,15 @@ const navigationItems: NavItem[] = [
     roles: ['business_admin'],
   },
   {
+    title: 'Double Tick',
+    href: '/business-admin/doubletick',
+    icon: MessageCircle,
+    roles: ['business_admin'],
+    children: [
+      
+    ],
+  },
+  {
     title: 'Settings',
     href: '/business-admin/settings',
     icon: Settings,

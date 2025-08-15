@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle, Store, Tag, TrendingUp, Upload } from 'lucide-react';
+import { Package, Plus, Eye, Edit, Trash2, IndianRupee, AlertTriangle, Store, Tag, TrendingUp, Upload, Download } from 'lucide-react';
 import { apiService, Product } from '@/lib/api-service';
 import AuthGuard from '@/components/auth/AuthGuard';
 import { 
@@ -75,6 +75,7 @@ export default function ManagerProductsPage() {
   const [selectedAction, setSelectedAction] = useState<'view' | 'edit' | 'delete' | null>(null);
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -207,6 +208,139 @@ export default function ManagerProductsPage() {
     return scope === 'global' ? 'default' : 'secondary';
   };
 
+  // Export stock transfer data
+  const exportStockTransfers = async () => {
+    try {
+      setExporting(true);
+      console.log('Starting export of stock transfers...');
+      
+      // First, test if the backend is accessible
+      try {
+        const testResponse = await fetch('http://localhost:8000/api/products/transfers/', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log('Test response status:', testResponse.status);
+        
+        if (!testResponse.ok) {
+          throw new Error(`Backend responded with status: ${testResponse.status}`);
+        }
+      } catch (testError) {
+        console.error('Backend connection test failed:', testError);
+        alert('Cannot connect to backend server. Please ensure the Django backend is running on port 8000.');
+        return;
+      }
+      
+      // Use the existing API service to fetch stock transfer data
+      const response = await apiService.getStockTransfers();
+      console.log('Export response:', response);
+      
+      if (response.success && response.data) {
+        let transfers: any[] = [];
+        
+        // Handle different response formats
+        if (Array.isArray(response.data)) {
+          transfers = response.data;
+        } else if (typeof response.data === 'object' && response.data !== null) {
+          const data = response.data as any;
+          if (data.results && Array.isArray(data.results)) {
+            transfers = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            transfers = data.data;
+          }
+        }
+        
+        console.log('Number of transfers found:', transfers.length);
+        
+        if (transfers.length === 0) {
+          alert('No stock transfers found to export.');
+          return;
+        }
+        
+        // Convert to CSV format
+        const csvContent = convertTransfersToCSV(transfers);
+        console.log('CSV content length:', csvContent.length);
+        
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        console.log('Blob created:', blob.size, 'bytes');
+        
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `stock_transfers_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        
+        console.log('Downloading file...');
+        link.click();
+        
+        // Cleanup
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log('Export completed successfully');
+      } else {
+        console.error('Failed to fetch transfers:', response);
+        alert('Failed to fetch transfer data. Please check the console for details.');
+      }
+    } catch (error) {
+      console.error('Error exporting stock transfers:', error);
+      alert('Error exporting transfers. Please check the console for details.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const convertTransfersToCSV = (transfers: any[]) => {
+    if (transfers.length === 0) return 'No transfers found';
+    
+    const headers = [
+      'ID',
+      'From Store',
+      'To Store', 
+      'Product Name',
+      'Product SKU',
+      'Quantity',
+      'Reason',
+      'Requested By',
+      'Approved By',
+      'Status',
+      'Transfer Date',
+      'Notes',
+      'Created At',
+      'Updated At'
+    ];
+    
+    const csvRows = [headers.join(',')];
+    
+    transfers.forEach(transfer => {
+      const row = [
+        transfer.id,
+        transfer.from_store_name || transfer.from_store,
+        transfer.to_store_name || transfer.to_store,
+        transfer.product_name || transfer.product,
+        transfer.product_sku || '',
+        transfer.quantity,
+        `"${transfer.reason.replace(/"/g, '""')}"`,
+        transfer.requested_by_name || transfer.requested_by,
+        transfer.approved_by_name || transfer.approved_by || '',
+        transfer.status,
+        transfer.transfer_date || '',
+        `"${(transfer.notes || '').replace(/"/g, '""')}"`,
+        transfer.created_at,
+        transfer.updated_at
+      ];
+      csvRows.push(row.join(','));
+    });
+    
+    return csvRows.join('\n');
+  };
+
   const handleProductAction = (product: Product, action: 'view' | 'edit' | 'delete') => {
     setSelectedProduct(product);
     setSelectedAction(action);
@@ -269,6 +403,14 @@ export default function ManagerProductsPage() {
             <Button variant="outline" onClick={() => setIsStockTransferModalOpen(true)}>
               <Package className="w-4 h-4 mr-2" />
               Transfers
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={exportStockTransfers}
+              disabled={exporting}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {exporting ? 'Exporting...' : 'Export Transfers'}
             </Button>
             <Button variant="outline" onClick={() => setIsImportModalOpen(true)}>
               <Upload className="w-4 h-4 mr-2" />

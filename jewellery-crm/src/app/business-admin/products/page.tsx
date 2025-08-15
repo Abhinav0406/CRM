@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2, X, Store, Globe } from 'lucide-react';
+import { Search, Plus, Filter, MoreHorizontal, Package, Tag, TrendingUp, Eye, Edit, Trash2, X, Store, Globe, ArrowRight } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
 import { 
   DropdownMenu,
@@ -18,6 +18,7 @@ import AddProductModal from '@/components/products/AddProductModal';
 import CategoriesModal from '@/components/products/CategoriesModal';
 import ImportModal from '@/components/products/ImportModal';
 import ProductActionsModal from '@/components/products/ProductActionsModal';
+import BusinessAdminStockTransferModal from '@/components/products/BusinessAdminStockTransferModal';
 import ScopeIndicator from '@/components/ui/ScopeIndicator';
 import { useScopedVisibility } from '@/lib/scoped-visibility';
 
@@ -87,6 +88,7 @@ export default function ProductsPage() {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [globalCatalogue, setGlobalCatalogue] = useState<any>(null);
   const [showGlobalCatalogue, setShowGlobalCatalogue] = useState(false);
+  const [isTransfersModalOpen, setIsTransfersModalOpen] = useState(false);
   
   // Get user scope for scoped visibility
   const { userScope, canAccessAllData, canAccessStoreData } = useScopedVisibility();
@@ -287,6 +289,13 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setIsTransfersModalOpen(true)}
+          >
+            <ArrowRight className="w-4 h-4 mr-2" />
+            Product Transfers
+          </Button>
           <Button 
             variant="outline" 
             onClick={() => {
@@ -611,6 +620,16 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Stock Transfers Modal */}
+      <BusinessAdminStockTransferModal
+        isOpen={isTransfersModalOpen}
+        onClose={() => setIsTransfersModalOpen(false)}
+        onSuccess={() => {
+          setIsTransfersModalOpen(false);
+          // Refresh products if needed
+        }}
+      />
     </div>
   );
 }

@@ -327,7 +327,6 @@ class ManagerDashboardView(APIView):
             # Get team members for this store
             team_members = User.objects.filter(
                 tenant=user.tenant,
-                store=user.store,
                 role__in=['manager', 'inhouse_sales']
             )
             
@@ -571,15 +570,30 @@ class BusinessDashboardView(APIView):
             # 6. Top Performing Managers (only for business admin and manager roles)
             top_managers = []
             if user.role in ['business_admin', 'manager']:
-                managers = User.objects.filter(
-                    tenant=tenant,
-                    role__in=['business_admin', 'manager'],
-                    is_active=True
-                )
+                # For business admin, show managers from all stores with store info
+                # For manager, show only managers from their store
+                if user.role == 'business_admin':
+                    managers = User.objects.filter(
+                        tenant=tenant,
+                        role__in=['business_admin', 'manager'],
+                        is_active=True
+                    )
+                else:
+                    # Manager role - only show managers from their store
+                    managers = User.objects.filter(
+                        tenant=tenant,
+                        role__in=['business_admin', 'manager'],
+                        is_active=True,
+                        store=user.store
+                    )
                 
                 for manager in managers:
                     # Filter sales and pipelines specific to this manager
                     manager_sales_filter = {**base_sales_filter, 'sales_representative': manager}
+                    
+                    # If business admin, also filter by manager's store for accurate location-specific data
+                    if user.role == 'business_admin' and manager.store:
+                        manager_sales_filter['client__store'] = manager.store
                     
                     # Get all-time sales for this manager (not just last 30 days)
                     manager_all_time_sales = Sale.objects.filter(
@@ -594,6 +608,10 @@ class BusinessDashboardView(APIView):
                     ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
                     
                     manager_pipeline_filter = {**base_pipeline_filter, 'sales_representative': manager}
+                    
+                    # If business admin, also filter by manager's store for accurate location-specific data
+                    if user.role == 'business_admin' and manager.store:
+                        manager_pipeline_filter['client__store'] = manager.store
                     
                     # Get all-time closed won pipelines
                     manager_all_time_closed_won = SalesPipeline.objects.filter(
@@ -611,28 +629,43 @@ class BusinessDashboardView(APIView):
                     
                     # Include managers with any revenue or deals (even if 0 recent activity)
                     if float(manager_total_revenue) > 0 or manager_deals > 0:
-                        top_managers.append({
+                        manager_data = {
                             'id': manager.id,
                             'name': f"{manager.first_name} {manager.last_name}",
                             'revenue': float(manager_total_revenue),
                             'deals_closed': manager_deals,
                             'recent_revenue': float(manager_recent_sales)
-                        })
+                        }
+                        
+                        # Add store information for business admin to show location
+                        if user.role == 'business_admin' and manager.store:
+                            manager_data['store_name'] = manager.store.name
+                            manager_data['store_location'] = manager.store.location if hasattr(manager.store, 'location') else ''
+                        
+                        top_managers.append(manager_data)
                     
                     # Debug logging
-                    print(f"Manager {manager.first_name} {manager.last_name}: All-time Sales={manager_all_time_sales}, Recent Sales={manager_recent_sales}, Closed Won={manager_all_time_closed_won}, Deals={manager_deals}")
+                    store_info = f" (Store: {manager.store.name if manager.store else 'No Store'})" if user.role == 'business_admin' else ""
+                    print(f"Manager {manager.first_name} {manager.last_name}{store_info}: All-time Sales={manager_all_time_sales}, Recent Sales={manager_recent_sales}, Closed Won={manager_all_time_closed_won}, Deals={manager_deals}")
                 
                 # If no managers with sales found, show all managers for debugging
                 if not top_managers:
                     print("No managers with sales found, showing all active managers...")
                     for manager in managers:
-                        top_managers.append({
+                        manager_data = {
                             'id': manager.id,
                             'name': f"{manager.first_name} {manager.last_name}",
                             'revenue': 0.0,
                             'deals_closed': 0,
                             'recent_revenue': 0.0
-                        })
+                        }
+                        
+                        # Add store information for business admin to show location
+                        if user.role == 'business_admin' and manager.store:
+                            manager_data['store_name'] = manager.store.name
+                            manager_data['store_location'] = manager.store.location if hasattr(manager.store, 'location') else ''
+                        
+                        top_managers.append(manager_data)
                 
                 # Sort managers by revenue
                 top_managers.sort(key=lambda x: x['revenue'], reverse=True)
@@ -653,6 +686,10 @@ class BusinessDashboardView(APIView):
                 if user.role in ['manager', 'inhouse_sales'] and user.store:
                     salesman_sales_filter['client__store'] = user.store
                 
+                # If business admin, also filter by salesman's store for accurate location-specific data
+                if user.role == 'business_admin' and salesman.store:
+                    salesman_sales_filter['client__store'] = salesman.store
+                
                 salesman_sales = Sale.objects.filter(
                     **salesman_sales_filter,
                     sales_representative=salesman,
@@ -663,6 +700,10 @@ class BusinessDashboardView(APIView):
                 salesman_pipeline_filter = {**base_pipeline_filter}
                 if user.role in ['manager', 'inhouse_sales'] and user.store:
                     salesman_pipeline_filter['client__store'] = user.store
+                
+                # If business admin, also filter by salesman's store for accurate location-specific data
+                if user.role == 'business_admin' and salesman.store:
+                    salesman_pipeline_filter['client__store'] = salesman.store
                 
                 salesman_closed_won = SalesPipeline.objects.filter(
                     **salesman_pipeline_filter,
@@ -680,12 +721,19 @@ class BusinessDashboardView(APIView):
                 salesman_total_revenue = salesman_sales + salesman_closed_won
                 
                 if float(salesman_total_revenue) > 0:
-                    top_salesmen.append({
+                    salesman_data = {
                         'id': salesman.id,
                         'name': f"{salesman.first_name} {salesman.last_name}",
                         'revenue': float(salesman_total_revenue),
                         'deals_closed': salesman_deals
-                    })
+                    }
+                    
+                    # Add store information for business admin to show location
+                    if user.role == 'business_admin' and salesman.store:
+                        salesman_data['store_name'] = salesman.store.name
+                        salesman_data['store_location'] = salesman.store.location if hasattr(salesman.store, 'location') else ''
+                    
+                    top_salesmen.append(salesman_data)
             
             # Sort salesmen by revenue
             top_salesmen.sort(key=lambda x: x['revenue'], reverse=True)

@@ -830,7 +830,8 @@ class ApiService {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.store) queryParams.append('store', params.store);
 
-    return this.request(`/products/transfers/${queryParams.toString() ? `?${queryParams}` : ''}`);
+    const queryString = queryParams.toString();
+    return this.request(`/products/transfers/${queryString ? `?${queryString}` : ''}`);
   }
 
   async createStockTransfer(transferData: Partial<StockTransfer>): Promise<ApiResponse<StockTransfer>> {
