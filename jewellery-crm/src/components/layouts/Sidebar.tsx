@@ -119,12 +119,7 @@ const navigationItems: NavItem[] = [
     icon: Package,
     roles: ['business_admin'],
   },
-  {
-    title: 'Orders',
-    href: '/business-admin/orders',
-    icon: ShoppingBag,
-    roles: ['business_admin'],
-  },
+
   {
     title: 'Inventory',
     href: '/business-admin/inventory',
@@ -318,12 +313,7 @@ const navigationItems: NavItem[] = [
     icon: TrendingUp,
     roles: ['manager'],
   },
-  {
-    title: 'Orders',
-    href: '/manager/orders',
-    icon: ShoppingBag,
-    roles: ['manager'],
-  },
+
   {
     title: 'Analytics',
     href: '/manager/analytics',
@@ -436,12 +426,7 @@ const navigationItems: NavItem[] = [
     icon: Calendar,
     roles: ['sales'],
   },
-  {
-    title: 'Orders',
-    href: '/sales/orders',
-    icon: ShoppingBag,
-    roles: ['sales'],
-  },
+
   {
     title: 'Products',
     href: '/sales/products',

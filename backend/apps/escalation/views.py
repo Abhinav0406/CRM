@@ -36,7 +36,7 @@ class EscalationListView(generics.ListCreateAPIView):
             if user.store:
                 return Escalation.objects.filter(
                     Q(tenant=user.tenant) & 
-                    Q(client__assigned_to__store=user.store)
+                    Q(client__store=user.store)  # Show all escalations from clients in their store
                 )
             else:
                 return Escalation.objects.filter(
@@ -74,7 +74,7 @@ class EscalationDetailView(viewsets.ModelViewSet):
             if user.store:
                 return Escalation.objects.filter(
                     Q(tenant=user.tenant) & 
-                    Q(client__assigned_to__store=user.store)
+                    Q(client__store=user.store)  # Show all escalations from clients in their store
                 )
             else:
                 return Escalation.objects.filter(
@@ -84,7 +84,7 @@ class EscalationDetailView(viewsets.ModelViewSet):
         else:
             return Escalation.objects.filter(
                 Q(tenant=user.tenant) & 
-                (Q(created_by=user) | Q(assigned_to=user))
+                (Q(created_by=user) | Q(assigned_to__isnull=True))
             )
 
     def get_serializer_class(self):

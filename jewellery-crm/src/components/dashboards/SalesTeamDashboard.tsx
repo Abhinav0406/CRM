@@ -16,6 +16,7 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   DashboardLayout, 
   CardContainer,
@@ -75,7 +76,7 @@ const customerPipeline = [
   {
     id: 1,
     name: 'Mrs. Aditi Patel',
-    stage: 'Proposal',
+    stage: 'Exhibition',
     value: 125000,
     probability: 85,
     lastContact: '2 days ago',
@@ -108,7 +109,7 @@ const customerPipeline = [
   {
     id: 4,
     name: 'Mrs. Sunita Sharma',
-    stage: 'Lead',
+    stage: 'Store - Walkin',
     value: 45000,
     probability: 30,
     lastContact: '1 week ago',
@@ -180,17 +181,57 @@ const recentAchievements = [
  * Sales Team Dashboard Component
  */
 export function SalesTeamDashboard() {
+  const router = useRouter();
+
+  // Navigation handlers for buttons
+  const handleMyCalendar = () => {
+    router.push('/sales/calendar');
+  };
+
+  const handleAddCustomer = () => {
+    router.push('/sales/customers/new');
+  };
+
+  const handleViewAllPipeline = () => {
+    router.push('/sales/pipeline');
+  };
+
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'addCustomer':
+        router.push('/sales/customers/new');
+        break;
+      case 'bookAppointment':
+        router.push('/sales/appointments/new');
+        break;
+      case 'makeCall':
+        router.push('/sales/calls/new');
+        break;
+      case 'sendWhatsApp':
+        router.push('/sales/whatsapp/compose');
+        break;
+      case 'viewCatalog':
+        router.push('/sales/catalog');
+        break;
+      case 'myReports':
+        router.push('/sales/reports');
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <DashboardLayout
       title="My Dashboard"
       subtitle="Track your personal performance and manage your customer relationships"
       actions={
         <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleMyCalendar}>
             <Calendar className="w-4 h-4 mr-2" />
             My Calendar
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={handleAddCustomer}>
             <Plus className="w-4 h-4 mr-2" />
             Add Customer
           </Button>
@@ -272,7 +313,7 @@ export function SalesTeamDashboard() {
               <h3 className="text-xl font-semibold text-foreground">My Customer Pipeline</h3>
               <p className="text-sm text-muted-foreground">Active deals and opportunities</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleViewAllPipeline}>
               <Eye className="w-4 h-4 mr-2" />
               View All
             </Button>
@@ -453,32 +494,56 @@ export function SalesTeamDashboard() {
       <CardContainer>
         <h3 className="text-xl font-semibold text-foreground mb-6">Quick Actions</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('addCustomer')}
+          >
             <Plus className="w-5 h-5" />
             <span className="text-xs">Add Customer</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('bookAppointment')}
+          >
             <Calendar className="w-5 h-5" />
             <span className="text-xs">Book Appointment</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('makeCall')}
+          >
             <Phone className="w-5 h-5" />
             <span className="text-xs">Make Call</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('sendWhatsApp')}
+          >
             <MessageSquare className="w-5 h-5" />
             <span className="text-xs">Send WhatsApp</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('viewCatalog')}
+          >
             <Eye className="w-5 h-5" />
             <span className="text-xs">View Catalog</span>
           </Button>
           
-          <Button variant="outline" className="h-20 flex-col space-y-2">
+          <Button 
+            variant="outline" 
+            className="h-20 flex-col space-y-2"
+            onClick={() => handleQuickAction('myReports')}
+          >
             <TrendingUp className="w-5 h-5" />
             <span className="text-xs">My Reports</span>
           </Button>

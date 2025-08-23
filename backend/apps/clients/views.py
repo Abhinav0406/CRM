@@ -87,6 +87,9 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
             if request.user.store:
                 request.data['store'] = request.user.store.id
             
+            # Set created_by automatically
+            request.data['created_by'] = request.user.id
+            
             response = super().create(request, *args, **kwargs)
             print("=== DJANGO VIEW - CREATE SUCCESS ===")
             print(f"Response status: {response.status_code}")
@@ -205,6 +208,8 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
         print(f"Request headers: {dict(self.request.headers)}")
         
         instance = self.get_object()
+        # Pass user context to serializer for audit logging
+        serializer.context['user'] = self.request.user
         instance._auditlog_user = self.request.user
         result = serializer.save()
         print(f"=== UPDATE COMPLETED ===")

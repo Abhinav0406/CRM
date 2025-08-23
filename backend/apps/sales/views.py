@@ -127,6 +127,9 @@ class SalesPipelineListView(generics.ListAPIView, ScopedVisibilityMixin):
                 created_at__date__range=[start_date, end_date]
             )
         
+        # Optimize queries by prefetching related data
+        queryset = queryset.select_related('client', 'sales_representative').prefetch_related('client__interests__category', 'client__interests__product')
+        
         print(f"Final queryset count: {queryset.count()}")
         return queryset.order_by('-updated_at')
 
@@ -169,6 +172,9 @@ class MySalesPipelineListView(generics.ListAPIView):
             queryset = queryset.filter(
                 created_at__date__range=[start_date, end_date]
             )
+        
+        # Optimize queries by prefetching related data
+        queryset = queryset.select_related('client', 'sales_representative').prefetch_related('client__interests__category', 'client__interests__product')
         
         print(f"Final my pipelines count: {queryset.count()}")
         return queryset.order_by('-updated_at')
@@ -362,13 +368,15 @@ class PipelineStagesView(generics.GenericAPIView, ScopedVisibilityMixin):
     def get_stage_color(self, stage_code):
         """Get color for each stage"""
         colors = {
-            'lead': 'bg-gray-500',
-            'contacted': 'bg-blue-500',
-            'qualified': 'bg-yellow-500',
-            'proposal': 'bg-orange-500',
-            'negotiation': 'bg-purple-500',
-            'closed_won': 'bg-green-500',
+            'exhibition': 'bg-blue-500',
+            'social_media': 'bg-purple-500',
+            'interested': 'bg-yellow-500',
+            'store_walkin': 'bg-green-500',
+            'negotiation': 'bg-orange-500',
+            'closed_won': 'bg-emerald-500',
             'closed_lost': 'bg-red-500',
+            'future_prospect': 'bg-indigo-500',
+            'not_qualified': 'bg-gray-500',
         }
         return colors.get(stage_code, 'bg-gray-400')
 

@@ -32,11 +32,40 @@ class SalesPipelineSerializer(serializers.ModelSerializer):
     
     def get_client(self, obj):
         if obj.client:
+            # Get customer interests from the CustomerInterest model
+            customer_interests = []
+            if hasattr(obj.client, 'interests'):
+                for interest in obj.client.interests.all():
+                    customer_interests.append({
+                        'id': interest.id,
+                        'category': {
+                            'id': interest.category.id,
+                            'name': interest.category.name
+                        } if interest.category else None,
+                        'product': {
+                            'id': interest.product.id,
+                            'name': interest.product.name
+                        } if interest.product else None,
+                        'revenue': float(interest.revenue) if interest.revenue else 0,
+                        'notes': interest.notes,
+                        'created_at': interest.created_at.isoformat() if interest.created_at else None
+                    })
+            
             return {
                 'id': obj.client.id,
                 'first_name': obj.client.first_name,
                 'last_name': obj.client.last_name,
-                'full_name': obj.client.full_name,
+                'full_name': f"{obj.client.first_name} {obj.client.last_name}".strip(),
+                'email': obj.client.email,
+                'phone': obj.client.phone,
+                'customer_type': obj.client.customer_type,
+                'preferred_metal': obj.client.preferred_metal,
+                'preferred_stone': obj.client.preferred_stone,
+                'budget_range': obj.client.budget_range,
+                'lead_source': obj.client.lead_source,
+                'next_follow_up': obj.client.next_follow_up,
+                'customer_interests': customer_interests,
+                'created_at': obj.client.created_at.isoformat() if obj.client.created_at else None,
             }
         return None
     

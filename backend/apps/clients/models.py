@@ -11,6 +11,8 @@ from decimal import Decimal
 def serialize_field(value):
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
+    if isinstance(value, datetime.time):
+        return value.isoformat()
     if isinstance(value, Decimal):
         return float(value)
     if hasattr(value, 'pk'):
@@ -72,8 +74,12 @@ class Client(models.Model):
     first_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, blank=True, null=True)
     email = models.EmailField()
-    phone = models.CharField(max_length=15, blank=True, null=True)
-    customer_type = models.CharField(max_length=30, default='individual')
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    customer_type = models.CharField(max_length=30, default='individual', choices=[
+        ('individual', 'Individual'),
+        ('corporate', 'Corporate'),
+        ('wholesale', 'Wholesale'),
+    ])
 
     # Address
     address = models.TextField(blank=True, null=True)
@@ -95,6 +101,7 @@ class Client(models.Model):
     # Lead Information
     lead_source = models.CharField(max_length=50, blank=True, null=True)
     assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_clients')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_clients')
     
     # Status field
     status = models.CharField(
@@ -115,11 +122,9 @@ class Client(models.Model):
     catchment_area = models.CharField(max_length=100, blank=True, null=True)
     
     # Follow-up & Summary
-    next_follow_up = models.CharField(max_length=255, blank=True, null=True)
+    next_follow_up = models.DateField(blank=True, null=True)
+    next_follow_up_time = models.CharField(max_length=10, blank=True, null=True, help_text="Time for next follow-up (HH:MM format)")
     summary_notes = models.TextField(blank=True, null=True, default='')
-
-    # Customer Interests (as JSON)
-    customer_interests = models.JSONField(default=list, blank=True)
 
     # Tenant relationship
     tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='clients', null=True, blank=True)
@@ -168,6 +173,86 @@ class Client(models.Model):
         from django.utils import timezone
         self.last_contact_date = timezone.now()
         self.save()
+
+    def update_status_based_on_behavior(self):
+        """Automatically update customer status based on their behavior and purchase history."""
+        from apps.sales.models import Sale
+        
+        # Count total sales for this customer
+        total_sales = Sale.objects.filter(
+            client=self,
+            status__in=['confirmed', 'processing', 'shipped', 'delivered'],
+            payment_status__in=['paid', 'partial']
+        ).count()
+        
+        # Count total amount spent
+        total_spent = Sale.objects.filter(
+            client=self,
+            status__in=['confirmed', 'processing', 'shipped', 'delivered'],
+            payment_status__in=['paid', 'partial']
+        ).aggregate(total=models.Sum('total_amount'))['total'] or 0
+        
+        # Update status based on behavior
+        if total_sales > 0:
+            if total_spent >= 50000:  # ₹50,000+ spent
+                new_status = self.Status.CUSTOMER
+            elif total_sales >= 2 or total_spent >= 10000:  # 2+ purchases or ₹10,000+ spent
+                new_status = self.Status.CUSTOMER
+            else:
+                new_status = self.Status.PROSPECT
+        else:
+            # Check if they have any pipeline activity
+            pipeline_count = self.pipelines.filter(stage__in=['interested', 'store_walkin', 'negotiation']).count()
+            if pipeline_count > 0:
+                new_status = self.Status.PROSPECT
+            else:
+                new_status = self.Status.LEAD
+        
+        # Only update if status changed
+        if self.status != new_status:
+            self.status = new_status
+            self.save()
+            return f"Status updated from {self.get_status_display()} to {self.get_status_display()}"
+        
+        return f"Status remains {self.get_status_display()}"
+
+    def mark_as_customer(self):
+        """Manually mark client as a customer."""
+        self.status = self.Status.CUSTOMER
+        self.save()
+        return "Client marked as customer"
+
+    def mark_as_prospect(self):
+        """Manually mark client as a prospect."""
+        self.status = self.Status.PROSPECT
+        self.save()
+        return "Client marked as prospect"
+
+    def mark_as_inactive(self):
+        """Mark client as inactive."""
+        self.status = self.Status.INACTIVE
+        self.save()
+        return "Client marked as inactive"
+
+    @property
+    def total_spent(self):
+        """Calculate total amount spent by this customer."""
+        from apps.sales.models import Sale
+        return Sale.objects.filter(
+            client=self,
+            status__in=['confirmed', 'processing', 'shipped', 'delivered'],
+            payment_status__in=['paid', 'partial']
+        ).aggregate(total=models.Sum('total_amount'))['total'] or 0
+
+    @property
+    def total_purchases(self):
+        """Count total successful purchases."""
+        from apps.sales.models import Sale
+        return Sale.objects.filter(
+            client=self,
+            status__in=['confirmed', 'processing', 'shipped', 'delivered'],
+            payment_status__in=['paid', 'partial']
+        ).count()
 
 
 class ClientInteraction(models.Model):
@@ -551,6 +636,11 @@ class AuditLog(models.Model):
 
 @receiver(pre_save, sender=Client)
 def log_client_update(sender, instance, **kwargs):
+    print(f"🔍 PRE_SAVE SIGNAL FIRED:")
+    print(f"  - Instance ID: {instance.id if instance.pk else 'NEW'}")
+    print(f"  - _auditlog_user: {getattr(instance, '_auditlog_user', 'NOT SET')}")
+    print(f"  - User type: {type(getattr(instance, '_auditlog_user', None))}")
+    
     if instance.pk:
         try:
             old = Client.objects.get(pk=instance.pk)
@@ -558,30 +648,48 @@ def log_client_update(sender, instance, **kwargs):
         except Client.DoesNotExist:
             before = None
         instance._auditlog_before = before
+        print(f"  - Set _auditlog_before: {before is not None}")
     else:
         instance._auditlog_before = None
+        print(f"  - New instance, no before data")
 
 @receiver(post_save, sender=Client)
 def create_audit_log_on_save(sender, instance, created, **kwargs):
-    from .models import AuditLog
     user = getattr(instance, '_auditlog_user', None)
     before = getattr(instance, '_auditlog_before', None)
     after = {field.name: serialize_field(getattr(instance, field.name)) for field in instance._meta.fields}
     action = 'create' if created else 'update'
+    
+    print(f"🔍 AUDIT LOG SIGNAL FIRED:")
+    print(f"  - Action: {action}")
+    print(f"  - Instance ID: {instance.id}")
+    print(f"  - User from _auditlog_user: {user}")
+    print(f"  - User type: {type(user) if user else 'None'}")
+    print(f"  - Before: {before}")
+    print(f"  - After: {after}")
+    print(f"  - Changes detected: {before != after}")
+    
     if before != after:
-        AuditLog.objects.create(
+        # Import here to avoid circular import
+        from .models import AuditLog
+        audit_log = AuditLog.objects.create(
             client=instance,
             action=action,
             user=user,
             before=before,
             after=after
         )
+        print(f"✅ Created audit log: {audit_log}")
+        print(f"  - Audit log user: {audit_log.user}")
+    else:
+        print(f"⚠️ No changes detected, skipping audit log")
 
 @receiver(pre_delete, sender=Client)
 def create_audit_log_on_delete(sender, instance, **kwargs):
-    from .models import AuditLog
     user = getattr(instance, '_auditlog_user', None)
     before = {field.name: serialize_field(getattr(instance, field.name)) for field in instance._meta.fields}
+    # Import here to avoid circular import
+    from .models import AuditLog
     AuditLog.objects.create(
         client=instance,
         action='delete',
@@ -589,3 +697,42 @@ def create_audit_log_on_delete(sender, instance, **kwargs):
         before=before,
         after=None
     )
+
+
+class CustomerInterest(models.Model):
+    """
+    Model to store customer product interests and preferences.
+    """
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='interests')
+    
+    # Reference to actual tenant-specific categories and products
+    category = models.ForeignKey(
+        'products.Category',
+        on_delete=models.CASCADE,
+        related_name='customer_interests',
+        help_text="Product category from tenant's catalog"
+    )
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='customer_interests',
+        help_text="Specific product from tenant's catalog"
+    )
+    
+    revenue = models.DecimalField(max_digits=10, decimal_places=2, help_text="Estimated revenue opportunity")
+    notes = models.TextField(blank=True, null=True, help_text="Additional notes about this interest")
+    
+    # Tenant relationship
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='customer_interests')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Customer Interest"
+        verbose_name_plural = "Customer Interests"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.client.full_name} - {self.category.name if self.category else 'No Category'} - {self.product.name if self.product else 'No Product'}"

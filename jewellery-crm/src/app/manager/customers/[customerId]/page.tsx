@@ -73,7 +73,7 @@ export default function ManagerCustomerDetailPage() {
             <div className="text-sm text-text-muted">{`${customer.city || ''}, ${customer.state || ''}`}</div>
             <div className="text-xs text-text-muted">Joined: {new Date(customer.created_at).toLocaleDateString()}</div>
           </div>
-          <Badge variant="outline" className="capitalize text-xs h-fit">{customer.status || 'lead'}</Badge>
+          <Badge variant="outline" className="capitalize text-xs h-fit">{customer.status || 'exhibition'}</Badge>
         </div>
       </Card>
       <Tabs defaultValue="interactions" className="w-full">

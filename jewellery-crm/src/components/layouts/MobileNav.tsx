@@ -173,7 +173,7 @@ export function MobileMenuOverlay({ isOpen, onClose }: MobileMenuOverlayProps) {
 
   const menuItems = [
     { title: 'Products', href: '/products', icon: '📦' },
-    { title: 'Orders', href: '/orders', icon: '🛍️' },
+
     { title: 'E-commerce', href: '/ecommerce', icon: '🌐' },
     { title: 'Analytics', href: '/analytics', icon: '📊' },
     { title: 'WhatsApp', href: '/whatsapp', icon: '💬' },

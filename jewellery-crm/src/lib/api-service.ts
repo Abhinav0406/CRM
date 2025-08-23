@@ -50,6 +50,12 @@ interface Client {
   budget_range?: string;
   lead_source?: string;
   assigned_to?: number;
+  created_by?: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+  };
   notes?: string;
   community?: string;
   mother_tongue?: string;
@@ -59,7 +65,19 @@ interface Client {
   catchment_area?: string;
   next_follow_up?: string;
   summary_notes?: string;
-  customer_interests: string[];
+  customer_interests: Array<{
+    id: number;
+    category: {
+      id: number;
+      name: string;
+    } | null;
+    product: {
+      id: number;
+      name: string;
+    } | null;
+    revenue: number;
+    notes?: string;
+  }>;
   tenant?: number;
   store?: number;
   tags: number[];
@@ -188,8 +206,17 @@ interface Sale {
 interface SalesPipeline {
   id: number;
   title: string;
-  client: number;
-  sales_representative: number;
+  client: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    full_name: string;
+  } | null;
+  sales_representative: {
+    id: number;
+    username: string;
+    full_name: string;
+  } | null;
   stage: string;
   probability: number;
   expected_value: number;
@@ -553,8 +580,18 @@ class ApiService {
     return this.request('/analytics/dashboard/');
   }
 
-  async getBusinessAdminDashboard(): Promise<ApiResponse<any>> {
-    return this.request('/tenants/dashboard/');
+  async getBusinessAdminDashboard(params?: {
+    start_date?: string;
+    end_date?: string;
+    filter_type?: string;
+  }): Promise<ApiResponse<any>> {
+    const queryParams = new URLSearchParams();
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    if (params?.filter_type) queryParams.append('filter_type', params.filter_type);
+    
+    const url = `/tenants/dashboard/${queryParams.toString() ? `?${queryParams}` : ''}`;
+    return this.request(url);
   }
 
   async getPlatformAdminDashboard(): Promise<ApiResponse<any>> {

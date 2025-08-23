@@ -41,14 +41,34 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
     }
   }, [open, customerId]);
 
+  // Listen for refresh events from parent components
+  useEffect(() => {
+    const handleRefresh = (event: CustomEvent) => {
+      if (event.detail?.customerId === customerId) {
+        console.log('🔄 Refreshing customer details due to update event');
+        fetchCustomerDetails();
+      }
+    };
+
+    window.addEventListener('refreshCustomerDetails', handleRefresh as EventListener);
+    
+    return () => {
+      window.removeEventListener('refreshCustomerDetails', handleRefresh as EventListener);
+    };
+  }, [customerId]);
+
   const fetchCustomerDetails = async () => {
     if (!customerId) return;
+    
+    console.log('🔍 Fetching customer details for ID:', customerId);
     
     try {
       setLoading(true);
       const response = await apiService.getClient(customerId);
       
       if (response.success && response.data) {
+        console.log('✅ Customer data fetched successfully:', response.data);
+        console.log('📊 Customer interests count:', response.data.customer_interests?.length || 0);
         setCustomer(response.data);
         
         // Fetch real audit logs from the API
@@ -57,7 +77,7 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
           if (auditResponse.success && auditResponse.data) {
             const auditData = Array.isArray(auditResponse.data) 
               ? auditResponse.data 
-              : auditResponse.data.results || auditResponse.data.data || [];
+              : (auditResponse.data as any)?.results || (auditResponse.data as any)?.data || [];
             
             // Transform audit logs to match our interface
             const transformedLogs = auditData.map((log: any) => ({
@@ -98,7 +118,7 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
 
   const handleDelete = () => {
     if (customer && window.confirm(`Are you sure you want to delete ${customer.first_name} ${customer.last_name}? This action cannot be undone.`)) {
-      onDelete(customer.id);
+      onDelete(customer.id.toString());
       onClose();
     }
   };
@@ -123,6 +143,8 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
         return 'outline';
       case 'inactive':
         return 'destructive';
+      case 'exhibition':
+        return 'outline';
       default:
         return 'outline';
     }
@@ -181,6 +203,15 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={fetchCustomerDetails}
+                disabled={loading}
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
               {canDeleteCustomers && (
                 <Button 
@@ -267,6 +298,18 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
                       </p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <div>
+                      <p className="text-sm text-gray-500">Created By</p>
+                      <p className="font-medium">
+                        {customer.created_by ? 
+                          `${customer.created_by.first_name || ''} ${customer.created_by.last_name || ''}`.trim() || customer.created_by.username || 'Unknown User'
+                          : 'System'
+                        }
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -330,32 +373,200 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
           <TabsContent value="interests" className="space-y-6">
             <Card className="p-6">
               <h4 className="font-semibold mb-4">Customer Interests</h4>
-              {customer.customer_interests && customer.customer_interests.length > 0 ? (
+              {(() => {
+                // Debug logging
+                console.log('🔍 Customer interests debug:', {
+                  hasInterests: !!customer.customer_interests,
+                  interestsLength: customer.customer_interests?.length,
+                  interests: customer.customer_interests,
+                  customerId: customer.id
+                });
+                
+                return customer.customer_interests && customer.customer_interests.length > 0 ? (
                 <div className="space-y-4">
-                  {customer.customer_interests.map((interest, index) => (
+                    {customer.customer_interests.map((interest, index) => {
+                      // Parse the interest if it's a JSON string
+                      let parsedInterest;
+                      try {
+                        if (typeof interest === 'string') {
+                          parsedInterest = JSON.parse(interest);
+                        } else {
+                          parsedInterest = interest;
+                        }
+                      } catch (e) {
+                        console.error('Error parsing interest:', e);
+                        parsedInterest = interest;
+                      }
+
+                      console.log(`🔍 Interest ${index + 1}:`, {
+                        original: interest,
+                        parsed: parsedInterest,
+                        category: parsedInterest.category || parsedInterest.mainCategory,
+                        products: parsedInterest.products,
+                        preferences: parsedInterest.preferences
+                      });
+
+                      // Handle both old and new interest formats
+                      const category = parsedInterest.category || parsedInterest.mainCategory || 'Not specified';
+                      const products = parsedInterest.products || [];
+                      const preferences = parsedInterest.preferences || {};
+                      const revenue = parsedInterest.revenue || '0';
+                      
+                      // Handle new backend format (single product per interest)
+                      const singleProduct = parsedInterest.product;
+                      const hasSingleProduct = singleProduct && (singleProduct.name || singleProduct);
+                      
+                      // Determine if we should show single product or products array
+                      const shouldShowSingleProduct = hasSingleProduct && (!products || products.length === 0);
+                      const displayProducts = shouldShowSingleProduct ? [{ product: singleProduct, revenue: revenue }] : products;
+
+                      return (
                     <div key={index} className="border rounded-lg p-4">
                       <h5 className="font-medium mb-2">Interest #{index + 1}</h5>
+                          
+                          {/* Product Summary - More Prominent Display */}
+                          {displayProducts && displayProducts.length > 0 && (
+                            <div className="mb-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm text-gray-600">Product</p>
+                                  <p className="font-semibold text-blue-800">
+                                    {typeof displayProducts[0]?.product === 'object' && displayProducts[0]?.product?.name 
+                                      ? displayProducts[0].product.name 
+                                      : typeof displayProducts[0]?.product === 'string' 
+                                        ? displayProducts[0].product 
+                                        : 'Product Name'}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-600">Revenue</p>
+                                  <p className="font-semibold text-green-600">
+                                    ₹{typeof revenue === 'number' ? revenue.toLocaleString() : revenue}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-gray-500">Category</p>
-                          <p className="font-medium">{interest.category || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500">Products</p>
                           <p className="font-medium">
-                            {interest.products && interest.products.length > 0 
-                              ? interest.products.map(p => p.product).join(', ')
-                              : 'No products specified'
-                            }
+                                  {typeof category === 'object' && category?.name 
+                                    ? category.name 
+                                    : typeof category === 'string' 
+                                      ? category 
+                                      : 'Not specified'}
                           </p>
                         </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Revenue Opportunity</p>
+                          <p className="font-medium text-green-600">
+                                  ₹{typeof revenue === 'number' ? revenue.toLocaleString() : revenue}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Products Section */}
+                            {displayProducts && displayProducts.length > 0 && (
+                              <div>
+                                <p className="text-sm text-gray-500 mb-2">Products</p>
+                                <div className="space-y-2">
+                                  {displayProducts.map((product: any, pIndex: number) => {
+                                    console.log(`🔍 Product ${pIndex + 1}:`, {
+                                      product,
+                                      productType: typeof product.product,
+                                      productName: product.product?.name || product.product,
+                                      revenue: product.revenue
+                                    });
+                                    
+                                    return (
+                                      <div key={pIndex} className="flex items-center gap-4 p-2 bg-gray-50 rounded">
+                                        <div className="flex-1">
+                                          <p className="font-medium">
+                                            {typeof product.product === 'object' && product.product?.name 
+                                              ? product.product.name 
+                                              : typeof product.product === 'string' 
+                                                ? product.product 
+                                                : 'Product'}
+                                          </p>
+                                        </div>
+                                        {product.revenue && (
+                                          <div className="text-sm text-green-600">
+                                            ₹{typeof product.revenue === 'number' ? product.revenue.toLocaleString() : product.revenue}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Debug info for products */}
+                            {(!displayProducts || displayProducts.length === 0) && (
+                              <div className="text-sm text-gray-500 italic">
+                                No products found in this interest. Debug: {JSON.stringify({ 
+                                  products, 
+                                  productsLength: products?.length,
+                                  singleProduct,
+                                  hasSingleProduct,
+                                  shouldShowSingleProduct,
+                                  displayProducts 
+                                })}
+                              </div>
+                            )}
+
+                            {/* Preferences Section */}
+                            {preferences && Object.keys(preferences).length > 0 && (
+                          <div>
+                                <p className="text-sm text-gray-500 mb-2">Preferences</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {preferences.designSelected && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      ✅ Design Selected
+                                    </span>
+                                  )}
+                                  {preferences.wantsDiscount && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      💰 Wants Discount
+                                    </span>
+                                  )}
+                                  {preferences.checkingOthers && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      🔍 Checking Others
+                                    </span>
+                                  )}
+                                  {preferences.lessVariety && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                      ⚠️ Less Variety
+                                    </span>
+                                  )}
+                                  {preferences.other && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                      📝 {preferences.other}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Fallback for old format */}
+                            {!products && !preferences && (
+                              <div className="text-sm text-gray-600">
+                                {typeof interest === 'string' ? interest : 'Interest details'}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                      );
+                    })}
                 </div>
               ) : (
                 <p className="text-gray-500">No interests recorded</p>
-              )}
+                );
+              })()}
             </Card>
           </TabsContent>
 

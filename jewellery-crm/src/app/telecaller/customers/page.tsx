@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
 const customers = [
-  { name: 'Priya S.', phone: '9000000001', status: 'lead', last: '7/30/2025' },
-  { name: 'Amit R.', phone: '9000000002', status: 'contacted', last: '7/29/2025' },
-  { name: 'Sneha K.', phone: '9000000003', status: 'lead', last: '7/28/2025' },
+  { name: 'Priya S.', phone: '9000000001', status: 'exhibition', last: '7/30/2025' },
+  { name: 'Amit R.', phone: '9000000002', status: 'social_media', last: '7/29/2025' },
+  { name: 'Sneha K.', phone: '9000000003', status: 'exhibition', last: '7/28/2025' },
 ];
 
 export default function TelecallerCustomersPage() {

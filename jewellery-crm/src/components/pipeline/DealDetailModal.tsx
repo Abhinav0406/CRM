@@ -45,6 +45,7 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
     next_action: '',
     next_action_date: '',
   });
+  const [error, setError] = useState<string | null>(null);
 
   // Get user scope for scoped visibility
   const { userScope } = useScopedVisibility();
@@ -59,22 +60,32 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
     try {
       setLoading(true);
       
-      console.log('Fetching deal with ID:', dealId);
+      console.log('=== DEBUG: Pipeline Detail Fetch ===');
+      console.log('Deal ID:', dealId);
+      console.log('Deal ID type:', typeof dealId);
       console.log('User scope:', userScope);
+      console.log('API Base URL:', 'http://localhost:8000/api');
+      console.log('Full URL being called:', `http://localhost:8000/api/sales/pipeline/${dealId}/`);
       
-      // Use scoped endpoint based on user role
-      let response;
-      if (userScope.type === 'own') {
-        // For salespeople, use the "my" endpoint
-        console.log('Using getMyPipeline endpoint for user scope:', userScope.type);
-        response = await apiService.getMyPipeline(dealId!);
-      } else {
-        // For managers and admins, use the regular endpoint (backend middleware handles scoping)
-        console.log('Using getPipeline endpoint for user scope:', userScope.type);
-        response = await apiService.getPipeline(dealId!);
+      // Validate the dealId
+      if (!dealId || dealId === '[object Object]' || dealId === 'undefined' || dealId === 'null') {
+        console.error('❌ Invalid dealId received:', dealId);
+        setError('Invalid pipeline ID received. Please try again.');
+        return;
       }
       
+      // Clean the dealId
+      const cleanId = String(dealId).trim();
+      console.log('Cleaned dealId:', cleanId);
+      
+      // Always use the regular pipeline endpoint - backend scoped visibility handles filtering
+      console.log('Using getPipeline endpoint - backend handles scoped visibility');
+      const response = await apiService.getPipeline(cleanId);
+      
+      console.log('API Response:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ Pipeline fetched successfully:', response.data);
         setDeal(response.data);
         setFormData({
           title: response.data.title,
@@ -89,22 +100,43 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
         
         // Fetch client details
         if (response.data.client) {
+          console.log('Fetching client details for:', response.data.client);
           const clientResponse = await apiService.getClient(response.data.client.toString());
           if (clientResponse.success && clientResponse.data) {
             setClient(clientResponse.data);
+            console.log('✅ Client details fetched:', clientResponse.data);
+          } else {
+            console.warn('❌ Failed to fetch client details:', clientResponse);
           }
         }
+      } else {
+        // Handle API response error
+        console.warn('❌ Pipeline API response indicates failure:', response);
+        setError(`Failed to fetch pipeline: ${response.message || 'Unknown error'}`);
       }
     } catch (error: any) {
-      console.error('Error fetching deal:', error);
+      console.error('❌ Error fetching deal:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       
-      // Handle 404 errors (pipeline not found or no permission)
-      if (error.message && error.message.includes('Not found')) {
-        console.log('Pipeline not found or access denied - this is expected for scoped visibility');
-        // Don't close the modal automatically, just show an error
-        // The modal will show "Deal Not Found" message instead
-        console.error('Pipeline not found. This might be a data inconsistency issue.');
+      // Handle specific error cases
+      if (error.message === 'Not found.') {
+        setError('Pipeline not found. This might be because:\n• The pipeline was deleted\n• You don\'t have access to this pipeline\n• The pipeline ID is invalid');
+      } else if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
+        setError('Access denied. You don\'t have permission to view this pipeline.');
+      } else if (error.message?.includes('500') || error.message?.includes('Internal Server Error')) {
+        setError('Server error occurred. Please try again later.');
+      } else {
+        setError(`Error fetching pipeline: ${error.message || 'Unknown error occurred'}`);
       }
+      
+      // Close modal after showing error
+      setTimeout(() => {
+        onClose();
+      }, 5000);
     } finally {
       setLoading(false);
     }
@@ -193,25 +225,29 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
 
   const getStageBadgeVariant = (stage: string) => {
     switch (stage) {
-      case 'lead': return 'secondary';
-      case 'contacted': return 'default';
-      case 'qualified': return 'default';
-      case 'proposal': return 'default';
+      case 'exhibition': return 'secondary';
+      case 'social_media': return 'default';
+      case 'interested': return 'default';
+      case 'store_walkin': return 'default';
       case 'negotiation': return 'default';
       case 'closed_won': return 'default';
       case 'closed_lost': return 'destructive';
+      case 'future_prospect': return 'default';
+      case 'not_qualified': return 'secondary';
       default: return 'outline';
     }
   };
 
   const stages = [
-    { value: 'lead', label: 'Lead', color: 'bg-gray-500' },
-    { value: 'contacted', label: 'Contacted', color: 'bg-blue-500' },
-    { value: 'qualified', label: 'Qualified', color: 'bg-yellow-500' },
-    { value: 'proposal', label: 'Proposal', color: 'bg-orange-500' },
-    { value: 'negotiation', label: 'Negotiation', color: 'bg-purple-500' },
-    { value: 'closed_won', label: 'Closed Won', color: 'bg-green-500' },
+    { value: 'exhibition', label: 'Exhibition', color: 'bg-blue-500' },
+    { value: 'social_media', label: 'Social Media', color: 'bg-purple-500' },
+    { value: 'interested', label: 'Interested', color: 'bg-yellow-500' },
+    { value: 'store_walkin', label: 'Store - Walkin', color: 'bg-green-500' },
+    { value: 'negotiation', label: 'Negotiation', color: 'bg-orange-500' },
+    { value: 'closed_won', label: 'Closed Won', color: 'bg-emerald-500' },
     { value: 'closed_lost', label: 'Closed Lost', color: 'bg-red-500' },
+    { value: 'future_prospect', label: 'Future Prospect', color: 'bg-indigo-500' },
+    { value: 'not_qualified', label: 'Not Qualified', color: 'bg-gray-500' },
   ];
 
   if (loading) {
@@ -237,9 +273,45 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Deal Not Found</DialogTitle>
-            <DialogDescription>The requested deal could not be found.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <XCircle className="w-5 h-5" />
+              Deal Not Found
+            </DialogTitle>
+            <DialogDescription>
+              The requested deal (ID: {dealId}) could not be found. This might be because:
+            </DialogDescription>
           </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="text-sm text-yellow-800">
+                <ul className="list-disc list-inside space-y-1">
+                  <li>The deal was deleted or moved to a different stage</li>
+                  <li>You don't have permission to access this deal</li>
+                  <li>The deal ID is invalid or expired</li>
+                  <li>There might be a data synchronization issue</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>
+                Close
+              </Button>
+              <Button 
+                variant="default" 
+                onClick={() => {
+                  onClose();
+                  // Optionally refresh the pipeline list
+                  if (typeof onDealUpdated === 'function') {
+                    onDealUpdated();
+                  }
+                }}
+              >
+                Refresh List
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     );
@@ -269,6 +341,19 @@ export function DealDetailModal({ open, onClose, dealId, onDealUpdated }: DealDe
             </div>
           </div>
         </DialogHeader>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <XCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-red-800">
+                <h4 className="font-medium mb-1">Error Loading Pipeline</h4>
+                <p className="whitespace-pre-line">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {isEditing ? (
           <form onSubmit={handleSubmit} className="space-y-6">

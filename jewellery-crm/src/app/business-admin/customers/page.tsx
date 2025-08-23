@@ -8,51 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Search, Download, Upload, Plus, Filter, MoreHorizontal, Eye, Edit, Trash2, UserPlus, Calendar, MessageSquare, Phone } from 'lucide-react';
-import { apiService } from '@/lib/api-service';
+import { apiService, Client } from '@/lib/api-service';
 import { useAuth } from '@/hooks/useAuth';
 import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
 import { ImportModal } from '@/components/customers/ImportModal';
 import { ExportModal } from '@/components/customers/ExportModal';
 import { EditCustomerModal } from '@/components/customers/EditCustomerModal';
-
-interface Client {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  customer_type: string;
-  status?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  postal_code?: string;
-  date_of_birth?: string;
-  anniversary_date?: string;
-  preferred_metal?: string;
-  preferred_stone?: string;
-  ring_size?: string;
-  budget_range?: string;
-  lead_source?: string;
-  assigned_to?: number;
-  notes?: string;
-  community?: string;
-  mother_tongue?: string;
-  reason_for_visit?: string;
-  age_of_end_user?: string;
-  saving_scheme?: string;
-  catchment_area?: string;
-  next_follow_up?: string;
-  summary_notes?: string;
-  customer_interests: string[];
-  tenant?: number;
-  tags: number[];
-  created_at: string;
-  updated_at: string;
-  is_deleted: boolean;
-  deleted_at?: string;
-}
+import { CustomerDetailModal } from '@/components/customers/CustomerDetailModal';
 
 export default function CustomersPage() {
   const { user } = useAuth();
@@ -66,6 +28,8 @@ export default function CustomersPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   // Check if user can delete customers (managers and higher roles)
   const canDeleteCustomers = user?.role && ['platform_admin', 'business_admin', 'manager'].includes(user.role);
@@ -151,8 +115,9 @@ export default function CustomersPage() {
   };
 
   const handleViewCustomer = (client: Client) => {
-    // Navigate to customer detail page
-    window.location.href = `/business-admin/customers/${client.id}`;
+    // Open customer detail modal
+    setSelectedCustomerId(client.id.toString());
+    setShowDetailModal(true);
   };
 
   const handleEditCustomer = (client: Client) => {
@@ -360,7 +325,7 @@ export default function CustomersPage() {
                     <th className="text-left py-3 px-4 font-medium text-text-secondary">Contact</th>
                     <th className="text-left py-3 px-4 font-medium text-text-secondary">Status</th>
                     <th className="text-left py-3 px-4 font-medium text-text-secondary">Source</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Assigned To</th>
+                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Created By</th>
                     <th className="text-left py-3 px-4 font-medium text-text-secondary">Created</th>
                     <th className="text-left py-3 px-4 font-medium text-text-secondary">Actions</th>
                   </tr>
@@ -398,10 +363,7 @@ export default function CustomersPage() {
                         {client.lead_source || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-text-secondary">
-                        {client.assigned_to 
-                          ? `User ${client.assigned_to}`
-                          : 'Unassigned'
-                        }
+                        System
                       </td>
                       <td className="py-3 px-4 text-text-secondary">
                         {formatDate(client.created_at)}
@@ -496,8 +458,37 @@ export default function CustomersPage() {
         customer={selectedCustomer}
         onCustomerUpdated={() => {
           fetchClients(); // Refresh the list
+          // If we have a customer detail modal open, refresh its data too
+          if (selectedCustomerId) {
+            // Force refresh of customer detail data
+            const event = new CustomEvent('refreshCustomerDetails', { 
+              detail: { customerId: selectedCustomerId } 
+            });
+            window.dispatchEvent(event);
+          }
           setShowEditModal(false);
           setSelectedCustomer(null);
+        }}
+      />
+
+      {/* Customer Detail Modal */}
+      <CustomerDetailModal
+        open={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedCustomerId(null);
+        }}
+        customerId={selectedCustomerId}
+        onEdit={(customer) => {
+          setSelectedCustomer(customer);
+          setShowDetailModal(false);
+          setShowEditModal(true);
+        }}
+        onDelete={(customerId) => {
+          const customerToDelete = clients.find(c => c.id.toString() === customerId);
+          if (customerToDelete) {
+            handleDeleteCustomer(customerToDelete);
+          }
         }}
       />
     </div>

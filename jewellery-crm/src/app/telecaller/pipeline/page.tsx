@@ -10,10 +10,9 @@ const stats = [
 ];
 
 const stages = [
-  { label: 'New', count: 8 },
-  { label: 'Contacted', count: 6 },
-  { label: 'Qualified', count: 4 },
-  { label: 'Appointment Set', count: 2 },
+  { label: 'Exhibition', count: 15 },
+  { label: 'Social Media', count: 12 },
+  { label: 'Interested', count: 8 },
 ];
 
 export default function TelecallerPipelinePage() {

@@ -93,6 +93,8 @@ export function TrashModal({ open, onClose, onCustomerRestored }: TrashModalProp
         return 'outline';
       case 'inactive':
         return 'destructive';
+      case 'exhibition':
+        return 'outline';
       default:
         return 'outline';
     }

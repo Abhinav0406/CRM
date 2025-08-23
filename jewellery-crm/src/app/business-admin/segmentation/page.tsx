@@ -169,6 +169,7 @@ export default function CustomerSegmentationPage() {
         lead: customerData.filter(c => c.status === 'lead').length,
         prospect: customerData.filter(c => c.status === 'prospect').length,
         inactive: customerData.filter(c => c.status === 'inactive').length,
+        exhibition: customerData.filter(c => c.status === 'exhibition').length,
       };
 
       segments.status = Object.entries(statusCounts).map(([status, count]) => ({

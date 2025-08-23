@@ -173,13 +173,15 @@ class SalesPipeline(models.Model):
     Sales pipeline for tracking leads and opportunities.
     """
     class Stage(models.TextChoices):
-        LEAD = 'lead', _('Lead')
-        CONTACTED = 'contacted', _('Contacted')
-        QUALIFIED = 'qualified', _('Qualified')
-        PROPOSAL = 'proposal', _('Proposal')
+        EXHIBITION = 'exhibition', _('Exhibition')
+        SOCIAL_MEDIA = 'social_media', _('Social Media')
+        INTERESTED = 'interested', _('Interested')
+        STORE_WALKIN = 'store_walkin', _('Store - Walkin')
         NEGOTIATION = 'negotiation', _('Negotiation')
         CLOSED_WON = 'closed_won', _('Closed Won')
         CLOSED_LOST = 'closed_lost', _('Closed Lost')
+        FUTURE_PROSPECT = 'future_prospect', _('Future Prospect')
+        NOT_QUALIFIED = 'not_qualified', _('Not Qualified')
 
     # Pipeline Information
     title = models.CharField(max_length=200)
@@ -198,7 +200,7 @@ class SalesPipeline(models.Model):
     stage = models.CharField(
         max_length=20,
         choices=Stage.choices,
-        default=Stage.LEAD
+        default=Stage.EXHIBITION
     )
     probability = models.PositiveIntegerField(
         default=0,
@@ -251,13 +253,15 @@ class SalesPipeline(models.Model):
         
         # Update probability based on stage
         stage_probabilities = {
-            self.Stage.LEAD: 10,
-            self.Stage.CONTACTED: 25,
-            self.Stage.QUALIFIED: 50,
-            self.Stage.PROPOSAL: 75,
-            self.Stage.NEGOTIATION: 90,
+            self.Stage.EXHIBITION: 5,
+            self.Stage.SOCIAL_MEDIA: 10,
+            self.Stage.INTERESTED: 20,
+            self.Stage.STORE_WALKIN: 30,
+            self.Stage.NEGOTIATION: 80,
             self.Stage.CLOSED_WON: 100,
             self.Stage.CLOSED_LOST: 0,
+            self.Stage.FUTURE_PROSPECT: 15,
+            self.Stage.NOT_QUALIFIED: 0,
         }
         
         if new_stage in stage_probabilities:

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Lexend } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/toaster";
 import { AppProviders } from "@/components/providers/AppProviders";
 
 const lexend = Lexend({
@@ -71,17 +71,7 @@ export default function RootLayout({
         <AppProviders>
           {children}
         </AppProviders>
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: 'hsl(var(--card))',
-              color: 'hsl(var(--card-foreground))',
-              border: '1px solid hsl(var(--border))',
-            },
-          }}
-        />
+        <Toaster />
       </body>
     </html>
   );

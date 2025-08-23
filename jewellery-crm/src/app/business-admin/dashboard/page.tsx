@@ -1,26 +1,30 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { apiService } from '@/lib/api-service';
-import { Users, TrendingUp, Package, DollarSign, Calendar, ShoppingBag, Loader2, Target, Store, Award } from 'lucide-react';
+import { Users, TrendingUp, Package, DollarSign, Calendar, ShoppingBag, Loader2, Target, Store, Award, Filter, X, CheckCircle } from 'lucide-react';
+
 import { NotificationBell } from '@/components/notifications';
 
 interface DashboardData {
   // KPI Metrics
   total_sales: {
+    period: number; // New field for filtered period
     today: number;
     week: number;
     month: number;
+    period_count: number; // New field for filtered period count
     today_count: number;
     week_count: number;
     month_count: number;
   };
   pipeline_revenue: number;
-  closed_won_pipeline_count: number; // Moved from pipeline to sales
+  closed_won_pipeline_count: number;
   pipeline_deals_count: number;
   
   // Store Performance
@@ -38,7 +42,7 @@ interface DashboardData {
     revenue: number;
     deals_closed: number;
     avatar?: string;
-    store_name?: string; // Added store_name to the interface
+    store_name?: string;
   }>;
   
   top_salesmen: Array<{
@@ -47,36 +51,199 @@ interface DashboardData {
     revenue: number;
     deals_closed: number;
     avatar?: string;
-    store_name?: string; // Added store_name to the interface
+    store_name?: string;
   }>;
 }
 
+// Date filter options
+const dateFilterOptions = [
+  { label: 'Today', value: 'today', days: 0 },
+  { label: 'Yesterday', value: 'yesterday', days: -1 },
+  { label: 'Last 7 Days', value: 'last7days', days: -7 },
+  { label: 'Last 30 Days', value: 'last30days', days: -30 },
+  { label: 'This Week', value: 'thisWeek', days: 0 },
+  { label: 'This Month', value: 'thisMonth', days: 0 },
+  { label: 'Last Month', value: 'lastMonth', days: -30 },
+  { label: 'Custom Range', value: 'custom', days: 0 },
+];
+
 export default function BusinessAdminDashboard() {
   const { user } = useAuth();
+  const router = useRouter();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Date filter state
+  const [selectedDateFilter, setSelectedDateFilter] = useState('today');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+
+  // Click outside handler for date picker
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        const response = await apiService.getBusinessAdminDashboard();
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (showCustomDatePicker && !target.closest('.date-picker-container')) {
+        setShowCustomDatePicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Get date range based on selected filter
+  const getDateRange = () => {
+    const today = new Date();
+    const startDate = new Date();
+    const endDate = new Date();
+    
+    switch (selectedDateFilter) {
+      case 'today':
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'yesterday':
+        startDate.setDate(today.getDate() - 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setDate(today.getDate() - 1);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'last7days':
+        startDate.setDate(today.getDate() - 7);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'last30days':
+        startDate.setDate(today.getDate() - 30);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'thisWeek':
+        const dayOfWeek = today.getDay();
+        const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        startDate.setDate(diff);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'thisMonth':
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'lastMonth':
+        startDate.setMonth(today.getMonth() - 1, 1);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setMonth(today.getMonth(), 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          startDate.setTime(new Date(customStartDate).getTime());
+          endDate.setTime(new Date(customEndDate).getTime());
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(23, 59, 59, 999);
+        }
+        break;
+      default:
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+    }
+    
+    return { startDate, endDate };
+  };
+
+  // Format date for display
+  const formatDateRange = () => {
+    const { startDate, endDate } = getDateRange();
+    const start = startDate.toLocaleDateString('en-IN', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+    const end = endDate.toLocaleDateString('en-IN', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+    
+    if (start === end) {
+      return start;
+    }
+    return `${start} - ${end}`;
+  };
+
+  // Fetch dashboard data with date filter
+  const fetchDashboardData = useCallback(async () => {
+    if (!user?.tenant) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get date range based on selected filter
+      const { startDate, endDate } = getDateRange();
+      
+      const response = await apiService.getBusinessAdminDashboard({
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        filter_type: selectedDateFilter
+      });
+      
         if (response.success) {
           setDashboardData(response.data);
         } else {
           setError('Failed to load dashboard data');
         }
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
         setError('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
-    };
+  }, [user?.tenant, selectedDateFilter, customStartDate, customEndDate]);
 
-    fetchDashboardData();
-  }, []);
+  useEffect(() => {
+    if (user?.tenant) {
+      fetchDashboardData();
+    }
+  }, [user?.tenant, fetchDashboardData]);
+
+  // Handle date filter change
+  const handleDateFilterChange = (filter: string) => {
+    setSelectedDateFilter(filter);
+    if (filter === 'custom') {
+      setShowCustomDatePicker(true);
+    } else {
+      setShowCustomDatePicker(false);
+      setCustomStartDate('');
+      setCustomEndDate('');
+    }
+    
+    // Force a data refresh when filter changes
+    setTimeout(() => {
+      fetchDashboardData();
+    }, 100);
+  };
+
+  // Apply custom date range
+  const applyCustomDateRange = () => {
+    if (customStartDate && customEndDate) {
+      setSelectedDateFilter('custom');
+      setShowCustomDatePicker(false);
+    }
+  };
+
+  // Clear custom date range
+  const clearCustomDateRange = () => {
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setSelectedDateFilter('today');
+    setShowCustomDatePicker(false);
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -117,6 +284,23 @@ export default function BusinessAdminDashboard() {
     }
   };
 
+  // Navigation handlers for buttons
+  const handleViewReports = () => {
+    router.push('/business-admin/analytics');
+  };
+
+  const handleStoreCardClick = (storeId: number) => {
+    router.push(`/business-admin/stores/${storeId}`);
+  };
+
+  const handleManagerCardClick = (managerId: number) => {
+    router.push(`/business-admin/team/${managerId}`);
+  };
+
+  const handleSalesmanCardClick = (salesmanId: number) => {
+    router.push(`/business-admin/team/${salesmanId}`);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -151,103 +335,336 @@ export default function BusinessAdminDashboard() {
           <p className="text-sm text-text-secondary mt-1">
             <span className="font-medium">{getRoleDisplayName()}</span> • {getScopeDescription()}
           </p>
+          {/* Date Filter Indicator */}
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-text-secondary">Showing data for:</span>
+            <Badge variant="secondary" className="text-xs">
+              {selectedDateFilter === 'today' && 'Today'}
+              {selectedDateFilter === 'yesterday' && 'Yesterday'}
+              {selectedDateFilter === 'last7days' && 'Last 7 Days'}
+              {selectedDateFilter === 'last30days' && 'Last 30 Days'}
+              {selectedDateFilter === 'thisWeek' && 'This Week'}
+              {selectedDateFilter === 'thisMonth' && 'This Month'}
+              {selectedDateFilter === 'lastMonth' && 'Last Month'}
+              {selectedDateFilter === 'custom' && 'Custom Range'}
+            </Badge>
+            <span className="text-xs text-text-secondary">
+              {formatDateRange()}
+            </span>
+            {/* Data Loading Indicator */}
+            {loading && (
+              <Badge variant="outline" className="text-xs">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Loading...
+              </Badge>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <NotificationBell />
-          <Button variant="outline" size="sm">
+          
+          {/* Date Filter Component */}
+          <div className="relative date-picker-container">
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowCustomDatePicker(!showCustomDatePicker)}
+                className="min-w-[220px] justify-between bg-white hover:bg-gray-50 border-gray-300"
+              >
             <Calendar className="w-4 h-4 mr-2" />
-            Last 30 Days
+                <span className="truncate">{formatDateRange()}</span>
+                <Filter className="w-4 h-4 ml-2" />
+              </Button>
+              
+              {/* Test Buttons for Quick Testing */}
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDateFilterChange('today')}
+                  className="text-xs px-2"
+                >
+                  Today
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDateFilterChange('last7days')}
+                  className="text-xs px-2"
+                >
+                  7D
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDateFilterChange('last30days')}
+                  className="text-xs px-2"
+                >
+                  30D
+                </Button>
+              </div>
+            </div>
+            
+            {/* Date Filter Dropdown */}
+            {showCustomDatePicker && (
+              <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-gray-900">Select Date Range</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCustomDatePicker(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                
+                {/* Quick Date Options */}
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {dateFilterOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      variant={selectedDateFilter === option.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleDateFilterChange(option.value)}
+                      className="text-xs"
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
+                
+                {/* Custom Date Range */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      max={customEndDate || undefined}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      End Date
+                    </label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      min={customStartDate || undefined}
+                    />
+                  </div>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    size="sm"
+                    onClick={applyCustomDateRange}
+                    disabled={!customStartDate || !customEndDate}
+                    className="flex-1"
+                  >
+                    Apply
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearCustomDateRange}
+                    className="flex-1"
+                  >
+                    Clear
           </Button>
-          <Button size="sm">
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <Button size="sm" onClick={handleViewReports}>
             <TrendingUp className="w-4 h-4 mr-2" />
             View Reports
           </Button>
         </div>
       </div>
 
-      {/* Top Row - Key Performance Indicators (KPIs) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Sales */}
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* Total Sales (Filtered by Date) */}
         <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Total Sales</p>
-                <p className="text-lg font-bold text-text-primary">
-                  {formatCurrency(dashboardData.total_sales.month)}
-                </p>
-                <p className="text-xs text-text-secondary">
-                  Today: {formatCurrency(dashboardData.total_sales.today)} | 
-                  Week: {formatCurrency(dashboardData.total_sales.week)}
-                </p>
-                <p className="text-xs text-green-600 font-medium">
-                  {dashboardData.total_sales.month_count} sales (includes closed won)
-                </p>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <DollarSign className="w-4 h-4 text-green-600" />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Date Filtered Sales</CardTitle>
+            <Filter className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(dashboardData.total_sales.period || dashboardData.total_sales.today)}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {selectedDateFilter === 'today' ? 'Today' : 
+               selectedDateFilter === 'yesterday' ? 'Yesterday' :
+               selectedDateFilter === 'last7days' ? 'Last 7 Days' :
+               selectedDateFilter === 'last30days' ? 'Last 30 Days' :
+               selectedDateFilter === 'thisWeek' ? 'This Week' :
+               selectedDateFilter === 'thisMonth' ? 'This Month' :
+               selectedDateFilter === 'lastMonth' ? 'Last Month' :
+               selectedDateFilter === 'custom' ? 'Custom Range' : 'Period'}
+            </p>
+            <p className="text-xs text-blue-600 font-medium mt-1">
+              {dashboardData.total_sales.period_count || dashboardData.total_sales.today_count || 0} sales
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Today's Sales (Always shows today's data) */}
+        <Card className="shadow-sm border-green-200 bg-green-50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-green-800">Today's Sales</CardTitle>
+            <Calendar className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-700">
+              {formatCurrency(dashboardData.total_sales.today)}
+            </div>
+            <p className="text-xs text-green-600">
+              {dashboardData.total_sales.today_count || 0} sales today
+            </p>
           </CardContent>
         </Card>
         
-        {/* Revenue in Pipeline */}
+        {/* Pipeline Revenue */}
         <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Revenue in Pipeline</p>
-                <p className="text-lg font-bold text-text-primary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pipeline Revenue</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
                   {formatCurrency(dashboardData.pipeline_revenue)}
-                </p>
-                <p className="text-xs text-text-secondary">Potential revenue</p>
-                <p className="text-xs text-blue-600 font-medium">All combined pending deal - revenue</p>
-              </div>
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Target className="w-4 h-4 text-blue-600" />
-              </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              {dashboardData.pipeline_deals_count} active deals
+            </p>
           </CardContent>
         </Card>
         
-        {/* Closed Won Pipeline (Moved to Sales) */}
+        {/* Closed Won Pipeline */}
         <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Closed Won Pipeline</p>
-                <p className="text-lg font-bold text-text-primary">
-                  {formatNumber(dashboardData.closed_won_pipeline_count)}
-                </p>
-                <p className="text-xs text-text-secondary">Successfully closed</p>
-                <p className="text-xs text-purple-600 font-medium">All combined deal count: closed won number</p>
-              </div>
-              <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                <ShoppingBag className="w-4 h-4 text-purple-600" />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Closed Won</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {dashboardData.closed_won_pipeline_count}
             </div>
+            <p className="text-xs text-muted-foreground">
+              deals closed this month
+            </p>
           </CardContent>
         </Card>
         
-        {/* How Many in Pipeline */}
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">How Many in Pipeline</p>
-                <p className="text-lg font-bold text-text-primary">
-                  {formatNumber(dashboardData.pipeline_deals_count)}
-                </p>
-                <p className="text-xs text-text-secondary">Active deals</p>
-                <p className="text-xs text-orange-600 font-medium">All combined deal count: pending deals</p>
-              </div>
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-orange-600" />
-              </div>
+        {/* Total Sales (All Time) */}
+        <Card className="shadow-sm border-blue-200 bg-blue-50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-blue-800">Total Sales</CardTitle>
+            <DollarSign className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-700">
+              {formatCurrency(dashboardData.total_sales.month)}
             </div>
+            <p className="text-xs text-blue-600">
+              This month total
+            </p>
           </CardContent>
         </Card>
       </div>
+
+
+
+      {/* Data Summary Section */}
+      <Card className="shadow-sm border-blue-200 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-800">
+            <span>📊 Data Summary</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="text-center">
+              <div className="text-lg font-bold text-blue-700">
+                {formatCurrency(dashboardData.total_sales.period || dashboardData.total_sales.today)}
+              </div>
+              <div className="text-blue-600 font-medium">
+                {selectedDateFilter === 'today' ? 'Today\'s Sales' : 
+                 selectedDateFilter === 'yesterday' ? 'Yesterday\'s Sales' :
+                 selectedDateFilter === 'last7days' ? 'Last 7 Days Sales' :
+                 selectedDateFilter === 'last30days' ? 'Last 30 Days Sales' :
+                 selectedDateFilter === 'thisWeek' ? 'This Week Sales' :
+                 selectedDateFilter === 'thisMonth' ? 'This Month Sales' :
+                 selectedDateFilter === 'lastMonth' ? 'Last Month Sales' :
+                 selectedDateFilter === 'custom' ? 'Custom Range Sales' : 'Period Sales'}
+              </div>
+              <div className="text-blue-500 text-xs">
+                {dashboardData.total_sales.period_count || dashboardData.total_sales.today_count || 0} sales
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-lg font-bold text-green-700">
+                {formatCurrency(dashboardData.total_sales.today)}
+              </div>
+              <div className="text-green-600 font-medium">Today's Sales</div>
+              <div className="text-green-500 text-xs">
+                {dashboardData.total_sales.today_count || 0} sales today
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-lg font-bold text-purple-700">
+                {formatCurrency(dashboardData.total_sales.month)}
+              </div>
+              <div className="text-purple-600 font-medium">This Month Total</div>
+              <div className="text-purple-500 text-xs">
+                All sales this month
+              </div>
+            </div>
+          </div>
+          
+          {/* Filter Status */}
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <div className="flex items-center justify-center gap-2 text-blue-600">
+              <span className="text-sm font-medium">Current Filter:</span>
+              <Badge variant="secondary" className="text-xs">
+                {selectedDateFilter === 'today' && 'Today'}
+                {selectedDateFilter === 'yesterday' && 'Yesterday'}
+                {selectedDateFilter === 'last7days' && 'Last 7 Days'}
+                {selectedDateFilter === 'last30days' && 'Last 30 Days'}
+                {selectedDateFilter === 'thisWeek' && 'This Week'}
+                {selectedDateFilter === 'thisMonth' && 'This Month'}
+                {selectedDateFilter === 'lastMonth' && 'Last Month'}
+                {selectedDateFilter === 'custom' && 'Custom Range'}
+              </Badge>
+              <span className="text-xs">• {formatDateRange()}</span>
+            </div>
+            
+            {/* Data Explanation */}
+            <div className="mt-3 text-center">
+              <div className="text-xs text-blue-500 space-y-1">
+                <div>💡 <strong>Date Filtered Sales</strong>: Shows data for your selected period only</div>
+                <div>💡 <strong>Today's Sales</strong>: Always shows today's actual sales (independent of filter)</div>
+                <div>💡 <strong>This Month Total</strong>: Shows all sales for the current month</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Middle Section - Store-wise Performance */}
       <Card className="shadow-sm">
@@ -260,7 +677,11 @@ export default function BusinessAdminDashboard() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {dashboardData.store_performance.map((store, index) => (
-              <div key={store.id} className="border rounded-lg p-4">
+              <div 
+                key={store.id} 
+                className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => handleStoreCardClick(store.id)}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-text-primary">{store.name}</h3>
                   <Badge variant="outline" className="text-xs">
@@ -304,7 +725,11 @@ export default function BusinessAdminDashboard() {
             <div className="space-y-3">
               {dashboardData.top_managers.length > 0 ? (
                 dashboardData.top_managers.map((manager) => (
-                  <div key={manager.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div 
+                    key={manager.id} 
+                    className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => handleManagerCardClick(manager.id)}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                         <Users className="w-4 h-4 text-blue-600" />
@@ -350,7 +775,11 @@ export default function BusinessAdminDashboard() {
             <div className="space-y-3">
               {dashboardData.top_salesmen.length > 0 ? (
                 dashboardData.top_salesmen.map((salesman) => (
-                  <div key={salesman.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div 
+                    key={salesman.id} 
+                    className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => handleSalesmanCardClick(salesman.id)}
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                         <Users className="w-4 h-4 text-green-600" />

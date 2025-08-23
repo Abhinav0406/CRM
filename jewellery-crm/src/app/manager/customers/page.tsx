@@ -131,6 +131,8 @@ export default function ManagerCustomersPage() {
         return 'outline';
       case 'inactive':
         return 'destructive';
+      case 'exhibition':
+        return 'outline';
       default:
         return 'outline';
     }

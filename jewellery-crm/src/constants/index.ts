@@ -57,21 +57,27 @@ export const ROLE_PERMISSIONS = {
 // ================================
 
 export const SALES_STAGES = {
-  LEAD: 'lead',
-  QUALIFIED: 'qualified',
-  PROPOSAL: 'proposal',
+  EXHIBITION: 'exhibition',
+  SOCIAL_MEDIA: 'social_media',
+  INTERESTED: 'interested',
+  STORE_WALKIN: 'store_walkin',
   NEGOTIATION: 'negotiation',
   CLOSED_WON: 'closed_won',
   CLOSED_LOST: 'closed_lost',
+  FUTURE_PROSPECT: 'future_prospect',
+  NOT_QUALIFIED: 'not_qualified',
 } as const;
 
 export const SALES_STAGE_LABELS = {
-  [SALES_STAGES.LEAD]: 'Lead',
-  [SALES_STAGES.QUALIFIED]: 'Qualified',
-  [SALES_STAGES.PROPOSAL]: 'Proposal',
+  [SALES_STAGES.EXHIBITION]: 'Exhibition',
+  [SALES_STAGES.SOCIAL_MEDIA]: 'Social Media',
+  [SALES_STAGES.INTERESTED]: 'Interested',
+  [SALES_STAGES.STORE_WALKIN]: 'Store - Walkin',
   [SALES_STAGES.NEGOTIATION]: 'Negotiation',
   [SALES_STAGES.CLOSED_WON]: 'Closed Won',
   [SALES_STAGES.CLOSED_LOST]: 'Closed Lost',
+  [SALES_STAGES.FUTURE_PROSPECT]: 'Future Prospect',
+  [SALES_STAGES.NOT_QUALIFIED]: 'Not Qualified',
 } as const;
 
 export const SALES_STAGE_COLORS = {

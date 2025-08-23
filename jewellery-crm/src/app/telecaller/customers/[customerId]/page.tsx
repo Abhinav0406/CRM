@@ -9,7 +9,7 @@ import { useParams } from 'next/navigation';
 const customer = {
   name: 'Priya S.',
   phone: '9000000001',
-  status: 'lead',
+  status: 'exhibition',
 };
 
 export default function TelecallerCustomerDetailPage() {

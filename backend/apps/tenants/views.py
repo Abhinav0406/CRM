@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 from decimal import Decimal
 from .models import Tenant
 from .serializers import TenantSerializer
@@ -155,13 +155,6 @@ class TenantDeleteView(generics.DestroyAPIView):
             product_count = Product.objects.filter(tenant=instance).count()
             sale_count = Sale.objects.filter(tenant=instance).count()
             
-            print(f"Deleting tenant {instance.name} (ID: {instance.id})")
-            print(f"Related data to be deleted:")
-            print(f"- Users: {user_count}")
-            print(f"- Clients: {client_count}")
-            print(f"- Products: {product_count}")
-            print(f"- Sales: {sale_count}")
-            
             # Delete all related data
             # Note: This will cascade delete due to foreign key relationships
             # but we're being explicit for better control and logging
@@ -182,10 +175,7 @@ class TenantDeleteView(generics.DestroyAPIView):
             # Finally delete the tenant
             instance.delete()
             
-            print(f"Successfully deleted tenant {instance.name} and all related data")
-            
         except Exception as e:
-            print(f"Error deleting tenant {instance.name}: {e}")
             raise
 
     def destroy(self, request, *args, **kwargs):
@@ -274,16 +264,12 @@ class ManagerDashboardView(APIView):
     def get(self, request):
         try:
             user = request.user
-            print(f"=== ManagerDashboardView.get called ===")
-            print(f"User: {user.username}, Role: {user.role}")
             
             if not user.store:
                 return Response({
                     'success': False,
                     'error': 'Manager not assigned to any store'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            print(f"Manager store: {user.store.name}")
             
             # Get date range for current month
             today = timezone.now()
@@ -330,11 +316,6 @@ class ManagerDashboardView(APIView):
                 role__in=['manager', 'inhouse_sales']
             )
             
-            print(f"DEBUG: Sales revenue: {sales_revenue}, Closed won revenue: {closed_won_revenue}")
-            print(f"DEBUG: Total monthly revenue: {total_monthly_revenue}")
-            print(f"DEBUG: Sales count: {sales_count}, Closed won count: {closed_won_count}")
-            print(f"DEBUG: Total sales count: {total_sales_count}")
-            
             dashboard_data = {
                 'store_name': user.store.name,
                 'monthly_revenue': float(total_monthly_revenue),
@@ -352,7 +333,6 @@ class ManagerDashboardView(APIView):
             })
             
         except Exception as e:
-            print(f"Error in ManagerDashboardView: {str(e)}")
             return Response({
                 'success': False,
                 'error': 'Failed to fetch dashboard data'
@@ -370,11 +350,64 @@ class BusinessDashboardView(APIView):
         if not tenant:
             return Response({'error': 'No tenant associated with user'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get date ranges for analytics
+        # Get date filter parameters from request
+        filter_type = request.query_params.get('filter_type', 'today')
+        start_date_param = request.query_params.get('start_date')
+        end_date_param = request.query_params.get('end_date')
+        
+        # Calculate date ranges based on filter type
         end_date = timezone.now()
-        start_date = end_date - timedelta(days=30)
-        today_start = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_start = end_date - timedelta(days=7)
+        
+        if start_date_param and end_date_param:
+            # Custom date range
+            try:
+                start_date = timezone.make_aware(datetime.fromisoformat(start_date_param.replace('Z', '+00:00')))
+                end_date = timezone.make_aware(datetime.fromisoformat(end_date_param.replace('Z', '+00:00')))
+            except (ValueError, TypeError) as e:
+                # Fallback to default if date parsing fails
+                start_date = end_date - timedelta(days=30)
+        else:
+            # Default date ranges based on filter type
+            if filter_type == 'today':
+                start_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif filter_type == 'yesterday':
+                start_date = (end_date - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = (end_date - timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+            elif filter_type == 'last7days':
+                start_date = end_date - timedelta(days=7)
+                start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif filter_type == 'last30days':
+                start_date = end_date - timedelta(days=30)
+                start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif filter_type == 'thisWeek':
+                # Start of current week (Monday)
+                day_of_week = end_date.weekday()
+                start_date = end_date - timedelta(days=day_of_week)
+                start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif filter_type == 'thisMonth':
+                # Start of current month
+                start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            elif filter_type == 'lastMonth':
+                # Start of last month
+                if end_date.month == 1:
+                    start_date = end_date.replace(year=end_date.year-1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+                else:
+                    start_date = end_date.replace(month=end_date.month-1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                # End of last month
+                if end_date.month == 1:
+                    end_date = end_date.replace(year=end_date.year-1, month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+                else:
+                    # Calculate the last day of the previous month
+                    first_day_current_month = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    last_day_previous_month = first_day_current_month - timedelta(days=1)
+                    end_date = last_day_previous_month.replace(hour=23, minute=59, second=59, microsecond=999999)
+            else:
+                # Default to today
+                start_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Ensure end_date is set to end of day if not already set
+        if filter_type not in ['yesterday', 'lastMonth']:
+            end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
         
         try:
             # Base filters based on user role
@@ -399,102 +432,138 @@ class BusinessDashboardView(APIView):
                     base_pipeline_filter['client__store'] = user.store
                     base_store_filter['id'] = user.store.id
             
-            # 1. Total Sales (today, week, month) - Include both sales and closed won pipeline
+            # 1. Total Sales for the selected date range
+            period_sales = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=start_date,
+                created_at__lte=end_date
+            ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            
+            period_closed_won = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True, created_at__gte=start_date, created_at__lte=end_date)
+            ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
+            
+            period_total = period_sales + period_closed_won
+            
+            # Count sales for the period
+            period_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=start_date,
+                created_at__lte=end_date
+            ).count()
+            
+            period_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
+                Q(actual_close_date__isnull=True, created_at__gte=start_date, created_at__lte=end_date)
+            ).count()
+            
+            period_total_sales_count = period_sales_count + period_closed_won_count
+            
+            # For backward compatibility, also calculate today, week, month
+            today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start = timezone.now() - timedelta(days=7)
+            month_start = timezone.now() - timedelta(days=30)
+            
             today_sales = Sale.objects.filter(
                 **base_sales_filter,
                 created_at__gte=today_start,
-                created_at__lte=end_date
+                created_at__lte=timezone.now()
             ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
             
             today_closed_won = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
                 stage='closed_won'
             ).filter(
-                Q(actual_close_date__gte=today_start, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+                Q(actual_close_date__gte=today_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=today_start, created_at__lte=timezone.now())
             ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
             today_total = today_sales + today_closed_won
             
-            # Count sales (including closed won pipelines)
-            today_sales_count = Sale.objects.filter(
-                **base_sales_filter,
-                created_at__gte=today_start,
-                created_at__lte=end_date
-            ).count()
-            
-            today_closed_won_count = SalesPipeline.objects.filter(
-                **base_pipeline_filter,
-                stage='closed_won'
-            ).filter(
-                Q(actual_close_date__gte=today_start, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
-            ).count()
-            
-            today_total_sales_count = today_sales_count + today_closed_won_count
-            
             week_sales = Sale.objects.filter(
                 **base_sales_filter,
                 created_at__gte=week_start,
-                created_at__lte=end_date
+                created_at__lte=timezone.now()
             ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
             
             week_closed_won = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
                 stage='closed_won'
             ).filter(
-                Q(actual_close_date__gte=week_start, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+                Q(actual_close_date__gte=week_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=week_start, created_at__lte=timezone.now())
             ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
             week_total = week_sales + week_closed_won
             
-            # Count sales (including closed won pipelines)
-            week_sales_count = Sale.objects.filter(
-                **base_sales_filter,
-                created_at__gte=week_start,
-                created_at__lte=end_date
-            ).count()
-            
-            week_closed_won_count = SalesPipeline.objects.filter(
-                **base_pipeline_filter,
-                stage='closed_won'
-            ).filter(
-                Q(actual_close_date__gte=week_start, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
-            ).count()
-            
-            week_total_sales_count = week_sales_count + week_closed_won_count
-            
             month_sales = Sale.objects.filter(
                 **base_sales_filter,
-                created_at__gte=start_date,
-                created_at__lte=end_date
+                created_at__gte=month_start,
+                created_at__lte=timezone.now()
             ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
             
             month_closed_won = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
                 stage='closed_won'
             ).filter(
-                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+                Q(actual_close_date__gte=month_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=month_start, created_at__lte=timezone.now())
             ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
             month_total = month_sales + month_closed_won
             
-            # Count sales (including closed won pipelines)
+            # Count sales for today, week, month
+            today_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=today_start,
+                created_at__lte=timezone.now()
+            ).count()
+            
+            today_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=today_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=today_start, created_at__lte=timezone.now())
+            ).count()
+            
+            today_total_sales_count = today_sales_count + today_closed_won_count
+            
+            week_sales_count = Sale.objects.filter(
+                **base_sales_filter,
+                created_at__gte=week_start,
+                created_at__lte=timezone.now()
+            ).count()
+            
+            week_closed_won_count = SalesPipeline.objects.filter(
+                **base_pipeline_filter,
+                stage='closed_won'
+            ).filter(
+                Q(actual_close_date__gte=week_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=week_start, created_at__lte=timezone.now())
+            ).count()
+            
+            week_total_sales_count = week_sales_count + week_closed_won_count
+            
             month_sales_count = Sale.objects.filter(
                 **base_sales_filter,
-                created_at__gte=start_date,
-                created_at__lte=end_date
+                created_at__gte=month_start,
+                created_at__lte=timezone.now()
             ).count()
             
             month_closed_won_count = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
                 stage='closed_won'
             ).filter(
-                Q(actual_close_date__gte=start_date, actual_close_date__lte=end_date) |
-                Q(actual_close_date__isnull=True)  # Include pipelines without close date
+                Q(actual_close_date__gte=month_start, actual_close_date__lte=timezone.now()) |
+                Q(actual_close_date__isnull=True, created_at__gte=month_start, created_at__lte=timezone.now())
             ).count()
             
             month_total_sales_count = month_sales_count + month_closed_won_count
@@ -502,7 +571,7 @@ class BusinessDashboardView(APIView):
             # 2. Pipeline Revenue (pending deals)
             pipeline_revenue = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
-                stage__in=['lead', 'contacted', 'qualified', 'proposal', 'negotiation']
+                stage__in=['exhibition', 'social_media', 'interested', 'store_walkin', 'negotiation']
             ).aggregate(total=Sum('expected_value'))['total'] or Decimal('0.00')
             
             # 3. Closed Won Pipeline Count (moved to sales section)
@@ -514,7 +583,7 @@ class BusinessDashboardView(APIView):
             # 4. Pipeline Deals Count (pending deals)
             pipeline_deals_count = SalesPipeline.objects.filter(
                 **base_pipeline_filter,
-                stage__in=['lead', 'contacted', 'qualified', 'proposal', 'negotiation']
+                stage__in=['exhibition', 'social_media', 'interested', 'store_walkin', 'negotiation']
             ).count()
             
             # 5. Store Performance
@@ -644,13 +713,8 @@ class BusinessDashboardView(APIView):
                         
                         top_managers.append(manager_data)
                     
-                    # Debug logging
-                    store_info = f" (Store: {manager.store.name if manager.store else 'No Store'})" if user.role == 'business_admin' else ""
-                    print(f"Manager {manager.first_name} {manager.last_name}{store_info}: All-time Sales={manager_all_time_sales}, Recent Sales={manager_recent_sales}, Closed Won={manager_all_time_closed_won}, Deals={manager_deals}")
-                
                 # If no managers with sales found, show all managers for debugging
                 if not top_managers:
-                    print("No managers with sales found, showing all active managers...")
                     for manager in managers:
                         manager_data = {
                             'id': manager.id,
@@ -670,8 +734,6 @@ class BusinessDashboardView(APIView):
                 # Sort managers by revenue
                 top_managers.sort(key=lambda x: x['revenue'], reverse=True)
                 top_managers = top_managers[:5]  # Top 5 managers
-                
-                print(f"Final top_managers list: {len(top_managers)} managers found")
             
             # 7. Top Performing Salesmen
             salesmen = User.objects.filter(
@@ -742,9 +804,11 @@ class BusinessDashboardView(APIView):
             # Prepare response data
             dashboard_data = {
                 'total_sales': {
+                    'period': float(period_total),
                     'today': float(today_total),
                     'week': float(week_total),
                     'month': float(month_total),
+                    'period_count': period_total_sales_count,
                     'today_count': today_total_sales_count,
                     'week_count': week_total_sales_count,
                     'month_count': month_total_sales_count
@@ -760,10 +824,9 @@ class BusinessDashboardView(APIView):
             return Response(dashboard_data)
             
         except Exception as e:
-            print(f"Error in BusinessDashboardView: {e}")
-            # Return mock data if there's an error
             return Response({
                 'total_sales': {
+                    'period': 25000.00,
                     'today': 25000.00,
                     'week': 150000.00,
                     'month': 450000.00

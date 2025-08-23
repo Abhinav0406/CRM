@@ -147,14 +147,7 @@ export default function AppointmentsPage() {
           <h1 className="text-3xl font-bold text-text-primary tracking-tight">Appointments</h1>
           <p className="text-text-secondary mt-1">Manage customer appointments and schedules</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            New Appointment
-          </Button>
-        </div>
+        
       </div>
 
       {/* Stats Row */}

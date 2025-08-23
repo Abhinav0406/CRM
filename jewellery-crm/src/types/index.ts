@@ -152,7 +152,7 @@ export interface Address {
 /**
  * Sales pipeline stages
  */
-export type SalesPipelineStage = 'lead' | 'qualified' | 'proposal' | 'negotiation' | 'closed_won' | 'closed_lost';
+export type SalesPipelineStage = 'exhibition' | 'social_media' | 'interested' | 'store_walkin' | 'negotiation' | 'closed_won' | 'closed_lost' | 'future_prospect' | 'not_qualified';
 
 /**
  * Deal/Opportunity in the sales pipeline

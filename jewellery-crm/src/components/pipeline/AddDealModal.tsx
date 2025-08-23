@@ -34,7 +34,7 @@ export function AddDealModal({ open, onClose, onDealCreated }: AddDealModalProps
     client: '',
     expected_value: '',
     probability: '10',
-    stage: 'lead',
+    stage: 'exhibition',
     expected_close_date: '',
     notes: '',
     next_action: '',
@@ -58,7 +58,7 @@ export function AddDealModal({ open, onClose, onDealCreated }: AddDealModalProps
       if (response.success && response.data) {
         const clientsData = Array.isArray(response.data) 
           ? response.data 
-          : response.data.results || response.data.data || [];
+          : (response.data as any)?.results || (response.data as any)?.data || [];
         setClients(clientsData);
       }
     } catch (error) {
@@ -93,10 +93,10 @@ export function AddDealModal({ open, onClose, onDealCreated }: AddDealModalProps
          expected_value: parseFloat(formData.expected_value),
          probability: parseInt(formData.probability),
          stage: formData.stage,
-         expected_close_date: formData.expected_close_date || null,
-         notes: formData.notes || null,
-         next_action: formData.next_action || null,
-         next_action_date: formData.next_action_date || null,
+         expected_close_date: formData.expected_close_date || undefined,
+         notes: formData.notes || undefined,
+         next_action: formData.next_action || undefined,
+         next_action_date: formData.next_action_date || undefined,
        };
 
       const response = await apiService.createSalesPipeline(pipelineData);
@@ -111,7 +111,7 @@ export function AddDealModal({ open, onClose, onDealCreated }: AddDealModalProps
           client: '',
           expected_value: '',
           probability: '10',
-          stage: 'lead',
+          stage: 'exhibition',
           expected_close_date: '',
           notes: '',
           next_action: '',
@@ -130,21 +130,23 @@ export function AddDealModal({ open, onClose, onDealCreated }: AddDealModalProps
   };
 
   const stages = [
-    { value: 'lead', label: 'Lead', color: 'bg-gray-500' },
-    { value: 'contacted', label: 'Contacted', color: 'bg-blue-500' },
-    { value: 'qualified', label: 'Qualified', color: 'bg-yellow-500' },
-    { value: 'proposal', label: 'Proposal', color: 'bg-orange-500' },
-    { value: 'negotiation', label: 'Negotiation', color: 'bg-purple-500' },
-    { value: 'closed_won', label: 'Closed Won', color: 'bg-green-500' },
+    { value: 'exhibition', label: 'Exhibition', color: 'bg-blue-500' },
+    { value: 'social_media', label: 'Social Media', color: 'bg-purple-500' },
+    { value: 'interested', label: 'Interested', color: 'bg-yellow-500' },
+    { value: 'store_walkin', label: 'Store - Walkin', color: 'bg-green-500' },
+    { value: 'negotiation', label: 'Negotiation', color: 'bg-orange-500' },
+    { value: 'closed_won', label: 'Closed Won', color: 'bg-emerald-500' },
     { value: 'closed_lost', label: 'Closed Lost', color: 'bg-red-500' },
+    { value: 'future_prospect', label: 'Future Prospect', color: 'bg-indigo-500' },
+    { value: 'not_qualified', label: 'Not Qualified', color: 'bg-gray-500' },
   ];
 
   const probabilityOptions = [
-    { value: '10', label: '10% - Lead' },
-    { value: '25', label: '25% - Contacted' },
-    { value: '50', label: '50% - Qualified' },
-    { value: '75', label: '75% - Proposal' },
-    { value: '90', label: '90% - Negotiation' },
+    { value: '5', label: '5% - Exhibition' },
+    { value: '10', label: '10% - Social Media' },
+    { value: '20', label: '20% - Interested' },
+    { value: '30', label: '30% - Store - Walkin' },
+    { value: '80', label: '80% - Negotiation' },
     { value: '100', label: '100% - Closed Won' },
     { value: '0', label: '0% - Closed Lost' },
   ];

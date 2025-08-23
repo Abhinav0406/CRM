@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "lucide-react";
 import { apiService } from "@/lib/api-service";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 interface AddCustomerModalProps {
   open: boolean;
@@ -16,6 +17,7 @@ interface AddCustomerModalProps {
 }
 
 export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
+  const { toast } = useToast();
   
   // Form state
   const [formData, setFormData] = useState({
@@ -65,6 +67,39 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
   const [showPipelineSection, setShowPipelineSection] = useState(false);
   const [pipelineOpportunities, setPipelineOpportunities] = useState<any[]>([]);
   const [showDesignSelectedNotification, setShowDesignSelectedNotification] = useState(false);
+  const [existingCustomerInfo, setExistingCustomerInfo] = useState<{
+    name: string;
+    phone: string;
+    status: string;
+    email: string;
+  } | null>(null);
+
+  // Helper function to suggest alternative emails
+  const suggestAlternativeEmails = (email: string) => {
+    const [base, domain] = email.split('@');
+    if (!domain) return [];
+    
+    return [
+      `${base}1@${domain}`,
+      `${base}2@${domain}`,
+      `${base}_new@${domain}`,
+      `${base}2024@${domain}`
+    ];
+  };
+
+  // Check if customer exists before submitting
+  const checkCustomerExists = async (email: string) => {
+    if (!email) return null;
+    
+    try {
+      // This would need to be implemented in the API service
+      // For now, we'll just return null
+      return null;
+    } catch (error) {
+      console.error('Error checking customer existence:', error);
+      return null;
+    }
+  };
 
   const addInterest = () => {
     setInterests([
@@ -99,25 +134,35 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
     });
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const handleInputChange = (field: keyof typeof formData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear existing customer info when email changes
+    if (field === 'email') {
+      setExistingCustomerInfo(null);
+    }
   };
 
   const handleSubmit = async () => {
     try {
       // Validate required fields
-      if (!formData.fullName.trim()) {
-        alert('Please enter the customer\'s full name.');
-        return;
-      }
+          if (!formData.fullName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter the customer's full name.",
+        variant: "destructive",
+      });
+      return;
+    }
       
-      if (!formData.phone.trim()) {
-        alert('Please enter the customer\'s phone number.');
-        return;
-      }
+              if (!formData.phone.trim()) {
+          toast({
+            title: "Validation Error",
+            description: "Please enter the customer's phone number.",
+            variant: "destructive",
+          });
+          return;
+        }
       
       console.log('Submitting customer data:', { formData, interests });
       
@@ -134,9 +179,9 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         }
       };
       
-      // Clean string fields - remove empty strings
+      // Clean string fields - return empty string for empty values instead of undefined
       const cleanStringField = (value: string) => {
-        return value && value.trim() ? value.trim() : undefined;
+        return value && value.trim() ? value.trim() : '';
       };
       
       // Prepare customer data
@@ -161,11 +206,45 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         next_follow_up: formatDateForAPI(formData.nextFollowUpDate),
         next_follow_up_time: formData.nextFollowUpTime,
         summary_notes: cleanStringField(formData.summaryNotes),
-        customer_interests: interests.map(interest => JSON.stringify({
-          category: interest.mainCategory,
-          products: interest.products,
-          preferences: interest.preferences
-        }))
+        customer_interests_input: (() => {
+          console.log('=== FRONTEND: Processing interests ===');
+          console.log('Raw interests:', interests);
+          
+          const filteredInterests = interests
+            .filter(interest => {
+              const hasCategory = interest.mainCategory && interest.mainCategory.trim();
+              console.log(`Interest '${interest.mainCategory}' - hasCategory: ${hasCategory}`);
+              return hasCategory;
+            })
+            .map(interest => {
+              // Only include products that have both name and revenue
+              const validProducts = interest.products.filter(p => {
+                const hasProduct = p.product && p.product.trim();
+                const hasRevenue = p.revenue && p.revenue.trim();
+                console.log(`Product '${p.product}' - hasProduct: ${hasProduct}, hasRevenue: ${hasRevenue}`);
+                return hasProduct && hasRevenue;
+              });
+              
+              console.log(`Interest '${interest.mainCategory}': ${validProducts.length} valid products out of ${interest.products.length} total`);
+              
+              // Only include interests that have at least one valid product
+              if (validProducts.length === 0) {
+                console.log(`Skipping interest '${interest.mainCategory}' - no valid products`);
+                return null;
+              }
+              
+              return JSON.stringify({
+                category: interest.mainCategory,
+                products: validProducts,
+                preferences: interest.preferences
+              });
+            })
+            .filter(interestStr => interestStr !== null); // Remove null entries
+          
+          console.log(`Filtered ${filteredInterests.length} valid interests out of ${interests.length} total`);
+          console.log('Final filtered interests:', filteredInterests);
+          return filteredInterests;
+        })()
       };
 
       // Remove undefined values to avoid sending them to API
@@ -194,15 +273,27 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         // Create sales pipeline opportunities if customer is interested
         if (showPipelineSection && pipelineOpportunities.length > 0) {
           await createPipelineOpportunities(response.data.id);
-          alert(`✅ Customer created successfully! ${pipelineOpportunities.length} sales pipeline opportunity(ies) have been created.`);
+          toast({
+          title: "Success!",
+          description: `Customer created successfully! 1 consolidated sales pipeline opportunity has been created.`,
+          variant: "success",
+        });
         }
         
         // Check if follow-up date was provided and show appropriate message
         if (formData.nextFollowUpDate) {
           const time = formData.nextFollowUpTime || '10:00';
-          alert(`Customer added successfully! A follow-up appointment has been scheduled for ${formData.nextFollowUpDate} at ${time}.`);
+          toast({
+            title: "Success!",
+            description: `Customer added successfully! A follow-up appointment has been scheduled for ${formData.nextFollowUpDate} at ${time}.`,
+            variant: "success",
+          });
         } else {
-          alert('Customer added successfully!');
+          toast({
+            title: "Success!",
+            description: "Customer added successfully!",
+            variant: "success",
+          });
         }
         
         onClose();
@@ -244,21 +335,67 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         setShowDesignSelectedNotification(false);
       } else {
         console.error('Failed to create customer:', response);
-        alert('Failed to add customer. Please try again.');
+        
+        // Handle specific error messages from backend
+        if (response.message) {
+          toast({
+            title: "Error",
+            description: `Failed to add customer: ${response.message}`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to add customer. Please try again.",
+            variant: "destructive",
+          });
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating customer:', error);
-      alert('Error creating customer. Please check the console for details.');
+      
+      // Handle specific error types
+      if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+        if (error.message.includes('email')) {
+          const suggestions = suggestAlternativeEmails(formData.email);
+          const suggestionText = suggestions.length > 0 ? `\n\nSuggested alternatives:\n${suggestions.slice(0, 2).join('\n')}` : '';
+          toast({
+            title: "Duplicate Customer",
+            description: `A customer with this email address already exists. Please use a different email or update the existing customer.${suggestionText}`,
+            variant: "warning",
+          });
+        } else {
+          toast({
+            title: "Duplicate Customer",
+            description: "A customer with these details already exists. Please check your information and try again.",
+            variant: "warning",
+          });
+        }
+      } else if (error.message) {
+        toast({
+          title: "Error",
+          description: `Error creating customer: ${error.message}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Error creating customer. Please check the console for details.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const createPipelineOpportunities = async (customerId: number) => {
     try {
-      for (const opportunity of pipelineOpportunities) {
+      // Since we now have only ONE consolidated opportunity, just create that single entry
+      if (pipelineOpportunities.length === 1) {
+        const opportunity = pipelineOpportunities[0];
         const pipelineData = {
           title: opportunity.title,
           client_id: customerId, // Changed from client to client_id
-          sales_representative: 1, // Default to current user
+          sales_representative: { id: 1, username: 'current_user', full_name: 'Current User' }, // Fixed type to match expected object
           stage: opportunity.stage,
           probability: opportunity.probability,
           expected_value: opportunity.expected_value,
@@ -267,59 +404,81 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
           next_action_date: opportunity.next_action_date
         };
         
-        console.log('Creating pipeline with data:', pipelineData);
+        console.log('Creating consolidated pipeline with data:', pipelineData);
         const response = await apiService.createSalesPipeline(pipelineData);
         if (response.success) {
-          console.log('Pipeline opportunity created:', response.data);
+          console.log('Consolidated pipeline opportunity created:', response.data);
         } else {
-          console.error('Failed to create pipeline opportunity:', response);
+          console.error('Failed to create consolidated pipeline opportunity:', response);
           console.error('Response details:', response);
         }
+      } else {
+        console.warn('Expected exactly 1 consolidated opportunity, but found:', pipelineOpportunities.length);
       }
     } catch (error) {
-      console.error('Error creating pipeline opportunities:', error);
+      console.error('Error creating consolidated pipeline opportunity:', error);
     }
   };
 
   const generatePipelineOpportunities = () => {
-    const opportunities: any[] = [];
+    // Consolidate all interests into one pipeline opportunity per customer
+    const allInterests = interests.filter(interest => 
+      interest.mainCategory && interest.products.length > 0
+    );
     
-    interests.forEach((interest, idx) => {
-      if (interest.mainCategory && interest.products.length > 0) {
-        const totalRevenue = interest.products.reduce((sum, product) => {
-          return sum + (parseFloat(product.revenue) || 0);
+    if (allInterests.length === 0) {
+      setPipelineOpportunities([]);
+      setShowPipelineSection(false);
+      return;
+    }
+    
+    // Calculate total revenue across all interests
+    const totalRevenue = allInterests.reduce((sum, interest) => {
+      const interestRevenue = interest.products.reduce((productSum, product) => {
+        return productSum + (parseFloat(product.revenue) || 0);
+      }, 0);
+      return sum + interestRevenue;
         }, 0);
         
-        if (totalRevenue > 0) {
+    // Determine overall stage and probability based on all interests
+    const hasDesignSelected = allInterests.some(interest => interest.preferences.designSelected);
+    const stage = hasDesignSelected ? 'closed_won' : 'exhibition';
+    const probability = hasDesignSelected ? 100 : 50;
+    
+    // Create consolidated notes with all interests
+    const interestDetails = allInterests.map(interest => {
           const categoryName = categories.find(cat => 
             cat.id?.toString() === interest.mainCategory || cat.name === interest.mainCategory
           )?.name || `Category ${interest.mainCategory}`;
           
-          // Check if design is selected to determine stage
-          const stage = interest.preferences.designSelected ? 'closed_won' : 'lead';
-          const probability = interest.preferences.designSelected ? 100 : 50;
-          
-          opportunities.push({
-            title: `${formData.fullName} - ${categoryName} Opportunity`,
+      const products = interest.products.map(p => p.product).join(', ');
+      const designStatus = interest.preferences.designSelected ? ' - Design Selected!' : '';
+      
+      return `${categoryName}: ${products}${designStatus}`;
+    }).join('\n');
+    
+    // Create single consolidated opportunity
+    const consolidatedOpportunity = {
+      title: `${formData.fullName} - Complete Opportunity`,
             probability: probability,
             expected_value: totalRevenue,
             stage: stage,
-            notes: `Generated from customer interest in ${categoryName}. Products: ${interest.products.map(p => p.product).join(', ')}${interest.preferences.designSelected ? ' - Design Selected!' : ''}`,
-            next_action: interest.preferences.designSelected ? 'Process order' : 'Follow up with customer',
+      notes: `Consolidated customer interests:\n${interestDetails}`,
+      next_action: hasDesignSelected ? 'Process complete order' : 'Follow up with customer on all interests',
             next_action_date: formData.nextFollowUpDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          });
-        }
-      }
-    });
+    };
     
-    setPipelineOpportunities(opportunities);
+    setPipelineOpportunities([consolidatedOpportunity]);
     setShowPipelineSection(true);
   };
 
   // Watch for design selection changes and update pipeline opportunities
   useEffect(() => {
     if (showPipelineSection && pipelineOpportunities.length > 0) {
+      // Only regenerate if we don't already have a consolidated opportunity
+      if (pipelineOpportunities.length !== 1) {
       generatePipelineOpportunities();
+      }
     }
   }, [interests]);
 
@@ -409,7 +568,24 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
                 placeholder="e.g., priya.sharma@example.com" 
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
+                onBlur={async () => {
+                  if (formData.email) {
+                    const existing = await checkCustomerExists(formData.email);
+                    setExistingCustomerInfo(existing);
+                  }
+                }}
               />
+              {existingCustomerInfo && (
+                <div className="mt-1 text-sm text-orange-600 bg-orange-50 p-2 rounded border">
+                  <div className="font-medium">Customer already exists:</div>
+                  <div>Name: {existingCustomerInfo.name}</div>
+                  <div>Phone: {existingCustomerInfo.phone}</div>
+                  <div>Status: {existingCustomerInfo.status}</div>
+                  <div className="mt-1 text-xs">
+                    Suggested alternatives: {suggestAlternativeEmails(formData.email).slice(0, 2).join(', ')}
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Birth Date</label>
@@ -824,7 +1000,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
             {showPipelineSection && pipelineOpportunities.length > 0 && (
               <div className="space-y-3">
                 <div className="text-sm font-medium text-green-700 mb-2">
-                  ✅ {pipelineOpportunities.length} opportunity(s) will be created in the sales pipeline
+                  ✅ 1 consolidated opportunity will be created in the sales pipeline
                 </div>
                 {pipelineOpportunities.map((opportunity, idx) => (
                   <div key={idx} className={`border rounded p-3 ${opportunity.stage === 'closed_won' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
@@ -843,7 +1019,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
                       <span className="font-medium">Probability:</span> {opportunity.probability}%
                     </div>
                     <div className="text-sm text-gray-600">
-                      <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : 'Lead'}
+                      <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : 'Exhibition'}
                     </div>
                     <div className="text-sm text-gray-600">
                       <span className="font-medium">Next Action:</span> {opportunity.next_action}

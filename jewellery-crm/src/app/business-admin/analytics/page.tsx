@@ -5,40 +5,40 @@ import { BarChart2, PieChart, TrendingUp, Users, Percent, Loader2 } from 'lucide
 import { apiService } from '@/lib/api-service';
 
 interface AnalyticsData {
-  metrics: {
-    total_sales: number;
-    sales_count: number;
-    active_customers: number;
-    total_products: number;
-    team_members: number;
-    sales_growth: number;
+  total_sales: {
+    today: number;
+    week: number;
+    month: number;
+    today_count: number;
+    week_count: number;
+    month_count: number;
   };
-  pipeline: {
-    leads: number;
-    qualified: number;
-    proposals: number;
-    negotiations: number;
-    closed: number;
-  };
-  recent_sales: Array<{
+  pipeline_revenue: number;
+  closed_won_pipeline_count: number;
+  pipeline_deals_count: number;
+  store_performance: Array<{
     id: number;
-    client_name: string;
-    amount: number;
-    status: string;
-    date: string;
-    items_count: number;
+    name: string;
+    revenue: number;
+    closed_won_revenue: number;
   }>;
-  recent_activities: Array<{
-    type: string;
-    title: string;
-    description: string;
-    date: string;
-    amount?: number;
+  top_managers: Array<{
+    id: number;
+    name: string;
+    revenue: number;
+    deals_closed: number;
+    recent_revenue?: number;
+    store_name?: string;
+    store_location?: string;
   }>;
-  period: {
-    start_date: string;
-    end_date: string;
-  };
+  top_salesmen: Array<{
+    id: number;
+    name: string;
+    revenue: number;
+    deals_closed: number;
+    store_name?: string;
+    store_location?: string;
+  }>;
 }
 
 export default function AnalyticsPage() {
@@ -106,23 +106,23 @@ export default function AnalyticsPage() {
 
   const stats = [
     { 
-      label: 'Revenue', 
-      value: formatCurrency(analyticsData.metrics.total_sales), 
+      label: 'Monthly Revenue', 
+      value: formatCurrency(analyticsData.total_sales.month), 
       icon: <TrendingUp className="w-6 h-6 text-green-600" /> 
     },
     { 
-      label: 'Orders', 
-      value: formatNumber(analyticsData.metrics.sales_count), 
+      label: 'Monthly Orders', 
+      value: formatNumber(analyticsData.total_sales.month_count), 
       icon: <BarChart2 className="w-6 h-6 text-blue-600" /> 
     },
     { 
-      label: 'Customers', 
-      value: formatNumber(analyticsData.metrics.active_customers), 
+      label: 'Pipeline Revenue', 
+      value: formatCurrency(analyticsData.pipeline_revenue), 
       icon: <Users className="w-6 h-6 text-purple-600" /> 
     },
     { 
-      label: 'Growth Rate', 
-      value: `${analyticsData.metrics.sales_growth > 0 ? '+' : ''}${analyticsData.metrics.sales_growth}%`, 
+      label: 'Pipeline Deals', 
+      value: formatNumber(analyticsData.pipeline_deals_count), 
       icon: <Percent className="w-6 h-6 text-orange-600" /> 
     },
   ];
@@ -148,71 +148,110 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="flex flex-col gap-2 p-6 items-center justify-center min-h-[220px]">
-          <BarChart2 className="w-12 h-12 text-blue-400 mb-2" />
-          <div className="font-semibold text-text-primary">Sales Pipeline</div>
-          <div className="text-xs text-text-muted mb-4">Pipeline Distribution</div>
-          <div className="w-full space-y-2">
+      {/* Sales Performance */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6">
+          <div className="font-semibold text-text-primary mb-4">Sales Performance</div>
+          <div className="space-y-3">
             <div className="flex justify-between text-sm">
-              <span>Leads</span>
-              <span className="font-medium">{analyticsData.pipeline.leads}</span>
+              <span>Today</span>
+              <span className="font-medium">{formatCurrency(analyticsData.total_sales.today)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Qualified</span>
-              <span className="font-medium">{analyticsData.pipeline.qualified}</span>
+              <span>This Week</span>
+              <span className="font-medium">{formatCurrency(analyticsData.total_sales.week)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Proposals</span>
-              <span className="font-medium">{analyticsData.pipeline.proposals}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Negotiations</span>
-              <span className="font-medium">{analyticsData.pipeline.negotiations}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Closed</span>
-              <span className="font-medium">{analyticsData.pipeline.closed}</span>
+              <span>This Month</span>
+              <span className="font-medium">{formatCurrency(analyticsData.total_sales.month)}</span>
             </div>
           </div>
         </Card>
-        <Card className="flex flex-col gap-2 p-6 items-center justify-center min-h-[220px]">
-          <PieChart className="w-12 h-12 text-purple-400 mb-2" />
-          <div className="font-semibold text-text-primary">Recent Sales</div>
-          <div className="text-xs text-text-muted mb-4">Latest Transactions</div>
-          <div className="w-full space-y-2">
-            {analyticsData.recent_sales.slice(0, 5).map((sale) => (
-              <div key={sale.id} className="flex justify-between text-sm">
-                <span className="truncate max-w-24">{sale.client_name}</span>
-                <span className="font-medium">{formatCurrency(sale.amount)}</span>
+
+        <Card className="p-6">
+          <div className="font-semibold text-text-primary mb-4">Pipeline Overview</div>
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span>Pipeline Revenue</span>
+              <span className="font-medium">{formatCurrency(analyticsData.pipeline_revenue)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Active Deals</span>
+              <span className="font-medium">{analyticsData.pipeline_deals_count}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Closed Won</span>
+              <span className="font-medium">{analyticsData.closed_won_pipeline_count}</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="font-semibold text-text-primary mb-4">Store Performance</div>
+          <div className="space-y-3">
+            {analyticsData.store_performance.slice(0, 3).map((store) => (
+              <div key={store.id} className="flex justify-between text-sm">
+                <span className="truncate max-w-20">{store.name}</span>
+                <span className="font-medium">{formatCurrency(store.revenue)}</span>
               </div>
             ))}
           </div>
         </Card>
       </div>
 
-      {/* Recent Activity */}
-      <Card className="p-6">
-        <div className="font-semibold text-text-primary mb-2">Recent Activity</div>
-        <ul className="divide-y divide-border">
-          {analyticsData.recent_activities.slice(0, 10).map((activity, i) => (
-            <li key={i} className="py-2 flex items-center justify-between">
-              <div className="flex-1">
-                <span className="text-text-secondary">{activity.title}</span>
-                {activity.amount && (
-                  <span className="text-xs text-text-muted ml-2">
-                    ({formatCurrency(activity.amount)})
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-text-muted">{activity.date}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {/* Top Performers */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="p-6">
+          <div className="font-semibold text-text-primary mb-4">Top Managers</div>
+          <div className="space-y-3">
+            {analyticsData.top_managers.length > 0 ? (
+              analyticsData.top_managers.slice(0, 5).map((manager) => (
+                <div key={manager.id} className="flex justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{manager.name}</span>
+                    {manager.store_name && (
+                      <span className="text-xs text-text-muted ml-2">({manager.store_name})</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">{formatCurrency(manager.revenue)}</div>
+                    <div className="text-xs text-text-muted">{manager.deals_closed} deals</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-text-muted py-4">No manager data available</div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="font-semibold text-text-primary mb-4">Top Salesmen</div>
+          <div className="space-y-3">
+            {analyticsData.top_salesmen.length > 0 ? (
+              analyticsData.top_salesmen.slice(0, 5).map((salesman) => (
+                <div key={salesman.id} className="flex justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{salesman.name}</span>
+                    {salesman.store_name && (
+                      <span className="text-xs text-text-muted ml-2">({salesman.store_name})</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">{formatCurrency(salesman.revenue)}</div>
+                    <div className="text-xs text-text-muted">{salesman.deals_closed} deals</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-text-muted py-4">No salesman data available</div>
+            )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
+ 
  
  

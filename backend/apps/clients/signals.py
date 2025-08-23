@@ -1,7 +1,65 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Client, CustomerTag
+from apps.sales.models import Sale, SalesPipeline
 from datetime import date
+
+@receiver(post_save, sender=Sale)
+def update_customer_status_on_sale(sender, instance, created, **kwargs):
+    """Automatically update customer status when a sale is created or updated."""
+    if instance.client:
+        # Update customer status based on their behavior
+        status_message = instance.client.update_status_based_on_behavior()
+        print(f"Customer {instance.client.full_name}: {status_message}")
+
+@receiver(post_save, sender=SalesPipeline)
+def update_customer_status_on_pipeline_change(sender, instance, created, **kwargs):
+    """Automatically update customer status when pipeline stage changes."""
+    if instance.client:
+        # Update customer status based on their behavior (including pipeline activity)
+        status_message = instance.client.update_status_based_on_behavior()
+        print(f"Customer {instance.client.full_name} pipeline stage changed to {instance.stage}: {status_message}")
+        
+        # If pipeline is closed won, automatically create a sale
+        if instance.stage == 'closed_won' and not created:  # Only for updates, not new creation
+            try:
+                from apps.sales.models import Sale
+                from django.utils import timezone
+                
+                # Check if sale already exists for this pipeline (by checking recent sales)
+                recent_sales = Sale.objects.filter(
+                    client=instance.client,
+                    total_amount=instance.expected_value,
+                    created_at__gte=timezone.now() - timezone.timedelta(minutes=5)  # Within last 5 minutes
+                )
+                
+                if not recent_sales.exists():
+                    # Create a new sale
+                    sale = Sale.objects.create(
+                        client=instance.client,
+                        sales_representative=instance.sales_representative,
+                        order_number=f"PIPELINE-{instance.id}-{int(timezone.now().timestamp())}",
+                        subtotal=instance.expected_value,
+                        tax_amount=0,
+                        discount_amount=0,
+                        total_amount=instance.expected_value,
+                        paid_amount=instance.expected_value,
+                        status='confirmed',
+                        payment_status='paid',
+                        order_date=timezone.now(),
+                        notes=f"Auto-generated from pipeline: {instance.title}",
+                        tenant=instance.tenant
+                    )
+                    print(f"✅ Automatically created sale for {instance.client.full_name}: ₹{instance.expected_value}")
+                    
+                    # Update customer status again after sale creation
+                    status_message = instance.client.update_status_based_on_behavior()
+                    print(f"Customer status updated after sale: {status_message}")
+                else:
+                    print(f"Sale already exists for pipeline {instance.id}")
+                    
+            except Exception as e:
+                print(f"❌ Error creating sale for pipeline {instance.id}: {e}")
 
 @receiver(post_save, sender=Client)
 def auto_apply_tags(sender, instance, created, **kwargs):
@@ -23,14 +81,12 @@ def auto_apply_tags(sender, instance, created, **kwargs):
         if slug:
             tags_to_add.add(slug)
 
-    # 2. Product Interest (handle array of objects with mainCategory)
-    if instance.customer_interests:
-        for interest in instance.customer_interests:
+    # 2. Product Interest (handle array of objects with category)
+    if hasattr(instance, 'interests') and instance.interests.exists():
+        for interest in instance.interests.all():
             category = None
-            if isinstance(interest, dict):
-                category = interest.get('mainCategory', '').strip().lower()
-            elif isinstance(interest, str):
-                category = interest.strip().lower()
+            if hasattr(interest, 'category') and interest.category:
+                category = interest.category.name.strip().lower()
             print(f"[DEBUG] Product interest: '{category}'")
             if category == 'diamond':
                 tags_to_add.add('diamond-interested')
@@ -38,7 +94,7 @@ def auto_apply_tags(sender, instance, created, **kwargs):
                 tags_to_add.add('gold-interested')
             elif category == 'polki':
                 tags_to_add.add('polki-interested')
-        if len(instance.customer_interests) > 1:
+        if instance.interests.count() > 1:
             tags_to_add.add('mixed-buyer')
 
     # 3. Revenue-Based Segmentation (assume total_spend is a property or field)

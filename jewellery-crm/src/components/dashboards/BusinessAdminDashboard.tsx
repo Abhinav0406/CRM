@@ -16,6 +16,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   DashboardLayout, 
   CardContainer,
@@ -100,6 +101,7 @@ export function BusinessAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     const fetchBusinessData = async () => {
@@ -153,17 +155,46 @@ export function BusinessAdminDashboard() {
     );
   }
 
+  // Navigation handlers for buttons
+  const handleBusinessSettings = () => {
+    router.push('/business-admin/settings');
+  };
+
+  const handleAddStore = () => {
+    router.push('/business-admin/stores/new');
+  };
+
+  const handleManageStores = () => {
+    router.push('/business-admin/stores');
+  };
+
+  const handleViewAllTeam = () => {
+    router.push('/business-admin/team');
+  };
+
+  const handleManageInventory = () => {
+    router.push('/business-admin/inventory');
+  };
+
+  const handleViewEcommerceStore = () => {
+    router.push('/business-admin/ecommerce');
+  };
+
+  const handleViewCustomerDetails = () => {
+    router.push('/business-admin/customers');
+  };
+
   return (
     <DashboardLayout
       title="Business Dashboard"
       subtitle={`Welcome back, ${user?.name || 'Admin'}! Here's your business overview`}
       actions={
         <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleBusinessSettings}>
             <Settings className="w-4 h-4 mr-2" />
             Business Settings
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={handleAddStore}>
             <Plus className="w-4 h-4 mr-2" />
             Add Store
           </Button>
@@ -250,7 +281,7 @@ export function BusinessAdminDashboard() {
               <h3 className="text-xl font-semibold text-foreground">Store Performance</h3>
               <p className="text-sm text-muted-foreground">Revenue and target progress by location</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleManageStores}>
               <Store className="w-4 h-4 mr-2" />
               Manage Stores
             </Button>
@@ -290,7 +321,7 @@ export function BusinessAdminDashboard() {
               <h3 className="text-xl font-semibold text-foreground">Team Performance</h3>
               <p className="text-sm text-muted-foreground">Sales and customer metrics by team member</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleViewAllTeam}>
               <Users className="w-4 h-4 mr-2" />
               View All
             </Button>
@@ -332,7 +363,7 @@ export function BusinessAdminDashboard() {
               <h3 className="text-xl font-semibold text-foreground">Inventory</h3>
               <p className="text-sm text-muted-foreground">Product catalog and stock levels</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleManageInventory}>
               <Package className="w-4 h-4 mr-2" />
               Manage
             </Button>
@@ -361,7 +392,7 @@ export function BusinessAdminDashboard() {
               <h3 className="text-xl font-semibold text-foreground">E-commerce</h3>
               <p className="text-sm text-muted-foreground">Online store performance</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleViewEcommerceStore}>
               <Globe className="w-4 h-4 mr-2" />
               View Store
             </Button>
@@ -394,7 +425,7 @@ export function BusinessAdminDashboard() {
               <h3 className="text-xl font-semibold text-foreground">Customer Retention</h3>
               <p className="text-sm text-muted-foreground">Loyalty and engagement metrics</p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleViewCustomerDetails}>
               <Heart className="w-4 h-4 mr-2" />
               View Details
             </Button>

@@ -89,7 +89,7 @@ class BusinessDashboardViewTest(APITestCase):
             title="Test Pipeline",
             client=self.client_obj,
             sales_representative=self.admin_user,
-            stage=SalesPipeline.Stage.LEAD,
+            stage=SalesPipeline.Stage.EXHIBITION,
             probability=50,
             expected_value=Decimal("2000.00"),
             actual_value=Decimal("0.00"),
