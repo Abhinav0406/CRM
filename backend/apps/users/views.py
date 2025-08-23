@@ -113,7 +113,7 @@ class ChangePasswordView(APIView):
         user.save()
 
         # Log the password change for security audit
-        print(f"Password changed for user: {user.username} ({user.role}) at {timezone.now()}")
+        # Password change logged
 
         return Response({
             'message': 'Password changed successfully',
@@ -133,6 +133,63 @@ class UserListView(generics.ListAPIView):
             return User.objects.filter(tenant=user.tenant)
         # Otherwise, only themselves
         return User.objects.filter(id=user.id)
+
+
+class SalesTeamListView(generics.ListAPIView):
+    """
+    List inhouse_sales users for business admin and manager oversight.
+    Access rules:
+    - Business admin: Can see all inhouse_sales in their tenant
+    - Manager: Can see inhouse_sales in their store/tenant
+    - Others: Access denied
+    """
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Only business admin and manager can access
+        if user.role not in ['business_admin', 'manager']:
+            return User.objects.none()
+        
+        if not user.tenant:
+            return User.objects.none()
+        
+        # Filter for inhouse_sales users
+        queryset = User.objects.filter(
+            tenant=user.tenant,
+            role='inhouse_sales',
+            is_active=True
+        )
+        
+        # Manager can only see inhouse_sales in their store
+        if user.role == 'manager' and user.store:
+            queryset = queryset.filter(store=user.store)
+        
+        return queryset.order_by('first_name', 'last_name')
+    
+    def list(self, request, *args, **kwargs):
+        """Add summary statistics for business admin and manager."""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # Calculate summary statistics
+        total_sales_users = queryset.count()
+        online_users = queryset.filter(
+            last_login__gt=timezone.now() - timedelta(minutes=15)
+        ).count()
+        
+        response_data = {
+            'results': serializer.data,
+            'summary': {
+                'total_sales_users': total_sales_users,
+                'online_users': online_users,
+                'offline_users': total_sales_users - online_users
+            }
+        }
+        
+        return Response(response_data)
 
 
 class UserCreateView(generics.CreateAPIView):
@@ -177,19 +234,70 @@ class UserCreateView(generics.CreateAPIView):
                     created_user.is_active = True
                     created_user.save()
             except Exception as e:
-                print('Could not set user as active:', e)
+                pass
         return response
 
 
 class UserDetailView(generics.RetrieveAPIView):
     """
-    Retrieve a specific user (Admin only).
+    Retrieve a specific user profile.
+    Access rules:
+    - Platform admin: Can view any user
+    - Business admin: Can view users in their tenant
+    - Manager: Can view users in their store/tenant
+    - Others: Can only view their own profile
     """
     serializer_class = UserSerializer
-    permission_classes = [IsRoleAllowed.for_roles(['platform_admin'])]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return User.objects.all()
+        user = self.request.user
+        
+        # Platform admin can see all users
+        if user.is_platform_admin:
+            return User.objects.all()
+        
+        # Business admin can see users in their tenant
+        if user.is_business_admin and user.tenant:
+            return User.objects.filter(tenant=user.tenant)
+        
+        # Manager can see users in their store and tenant
+        if user.is_manager and user.tenant:
+            if user.store:
+                # Manager can see users in their store and other users in their tenant
+                return User.objects.filter(
+                    Q(tenant=user.tenant) &
+                    (Q(store=user.store) | Q(role__in=['business_admin', 'manager']))
+                )
+            else:
+                # Manager without store can see users in their tenant
+                return User.objects.filter(tenant=user.tenant)
+        
+        # Other users can only see their own profile
+        return User.objects.filter(id=user.id)
+    
+    def get_object(self):
+        """Get the user object with additional permission checks."""
+        user_id = self.kwargs.get('pk')
+        current_user = self.request.user
+        
+        # If user is trying to access their own profile, allow it
+        if str(user_id) == str(current_user.id):
+            return current_user
+        
+        # For other users, apply role-based filtering
+        queryset = self.get_queryset()
+        try:
+            user_obj = queryset.get(id=user_id)
+            
+            # Additional check: Ensure business admin/manager can't see platform admin profiles
+            if current_user.role in ['business_admin', 'manager'] and user_obj.role == 'platform_admin':
+                raise User.DoesNotExist()
+            
+            return user_obj
+        except User.DoesNotExist:
+            from django.http import Http404
+            raise Http404("User profile not found or access denied")
 
 
 class UserUpdateView(generics.UpdateAPIView):
@@ -233,14 +341,10 @@ class TeamMemberListView(generics.ListCreateAPIView):
         return TeamMemberSerializer
 
     def create(self, request, *args, **kwargs):
-        """Override create method to add debugging and better error handling."""
+        """Override create method to add better error handling."""
         try:
-            print(f"TeamMemberListView.create called with data: {request.data}")
             return super().create(request, *args, **kwargs)
         except Exception as e:
-            print(f"Error in TeamMemberListView.create: {e}")
-            import traceback
-            traceback.print_exc()
             raise
 
     def get_queryset(self):
@@ -248,48 +352,31 @@ class TeamMemberListView(generics.ListCreateAPIView):
         user = self.request.user
         queryset = TeamMember.objects.all()
 
-        print(f"TeamMemberListView.get_queryset - User: {user.username}, Role: {user.role}, Tenant: {user.tenant}, Store: {user.store}")
-        print(f"Request headers: {dict(self.request.headers)}")
-
         if user.is_platform_admin:
-            print("User is platform admin - showing all team members")
             pass
         elif user.is_business_admin and user.tenant:
-            print(f"User is business admin - filtering by tenant: {user.tenant}")
             queryset = queryset.filter(user__tenant=user.tenant)
         elif user.is_manager and user.tenant and user.store:
             # Managers can see all team members in their store
-            print(f"User is manager - filtering by tenant: {user.tenant} and store: {user.store}")
             queryset = queryset.filter(user__tenant=user.tenant, user__store=user.store)
         elif user.is_manager and user.tenant:
             # Managers without specific store can see all team members in their tenant
-            print(f"User is manager without store - filtering by tenant: {user.tenant}")
             queryset = queryset.filter(user__tenant=user.tenant)
         elif user.role == 'tele_caller' and user.tenant and user.store:
-            print(f"User is tele_caller - filtering by tenant: {user.tenant} and store: {user.store}")
             queryset = queryset.filter(user__tenant=user.tenant, user__store=user.store, user__role='tele_caller')
         else:
-            print(f"User is other role - showing only self")
             queryset = queryset.filter(user=user)
 
         store_id = self.request.query_params.get('store')
         if store_id:
-            print(f"Additional store filter: {store_id}")
             queryset = queryset.filter(user__store_id=store_id)
 
-        print(f"Final queryset count: {queryset.count()}")
-        
-        # Print the actual team members being returned
-        for tm in queryset[:5]:  # Show first 5 for debugging
-            print(f"  - {tm.user.get_full_name()} ({tm.user.username}) - Role: {tm.user.role}")
-        
         return queryset
 
 
     def perform_create(self, serializer):
         """Set tenant for new team members."""
         user = self.request.user
-        print(f"TeamMemberListView.perform_create for user: {user.username}, role: {user.role}")
 
         # Restrict manager to only create certain roles
         if user.role == 'manager':
@@ -307,7 +394,6 @@ class TeamMemberListView(generics.ListCreateAPIView):
                     pass
 
         team_member = serializer.save()
-        print(f"Team member created successfully: {team_member.id}")
         
         # Update manager if provided
         manager_id = self.request.data.get('manager')
@@ -317,7 +403,6 @@ class TeamMemberListView(generics.ListCreateAPIView):
                 team_member.manager = manager
                 team_member.save()
             except TeamMember.DoesNotExist:
-                print(f"Manager with ID {manager_id} not found")
                 pass
         
         # Log activity
@@ -1114,6 +1199,487 @@ def team_members_list(request):
     print(f"Found {team_members.count()} team members")
     serializer = TeamMemberListSerializer(team_members, many=True)
     return Response(serializer.data)
+
+
+class SalesTeamPerformanceView(APIView):
+    """
+    Get performance metrics for inhouse_sales users.
+    Access rules:
+    - Business admin: Can see all inhouse_sales performance in their tenant
+    - Manager: Can see inhouse_sales performance in their store/tenant
+    - Others: Access denied
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        # Only business admin and manager can access
+        if user.role not in ['business_admin', 'manager']:
+            return Response(
+                {'detail': 'Access denied'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not user.tenant:
+            return Response(
+                {'detail': 'No tenant associated'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get sales users based on role
+        if user.role == 'manager' and user.store:
+            sales_users = User.objects.filter(
+                tenant=user.tenant,
+                store=user.store,
+                role='inhouse_sales',
+                is_active=True
+            )
+        else:
+            sales_users = User.objects.filter(
+                tenant=user.tenant,
+                role='inhouse_sales',
+                is_active=True
+            )
+        
+        # Get performance data for each sales user
+        performance_data = []
+        for sales_user in sales_users:
+            # Get recent activity (last 30 days)
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            
+            # Import models for performance calculation
+            from apps.clients.models import Client
+            from apps.sales.models import SalesPipeline
+            
+            # Count total customers created by this sales person
+            total_customers = Client.objects.filter(
+                created_by=sales_user,
+                tenant=sales_user.tenant
+            ).count()
+            
+            # Count recent customers (last 30 days)
+            recent_customers = Client.objects.filter(
+                created_by=sales_user,
+                tenant=sales_user.tenant,
+                created_at__gte=thirty_days_ago
+            ).count()
+            
+            # Count total deals/opportunities
+            total_deals = SalesPipeline.objects.filter(
+                sales_representative=sales_user,
+                tenant=sales_user.tenant
+            ).count()
+            
+            # Count closed deals
+            closed_deals = SalesPipeline.objects.filter(
+                sales_representative=sales_user,
+                tenant=sales_user.tenant,
+                stage='closed_won'
+            ).count()
+            
+            # Calculate total revenue from closed deals
+            total_revenue = SalesPipeline.objects.filter(
+                sales_representative=sales_user,
+                tenant=sales_user.tenant,
+                stage='closed_won'
+            ).aggregate(
+                total=Sum('expected_value', default=0)
+            )['total'] or 0
+            
+            # Calculate recent revenue (last 30 days)
+            recent_revenue = SalesPipeline.objects.filter(
+                sales_representative=sales_user,
+                tenant=sales_user.tenant,
+                stage='closed_won',
+                actual_close_date__gte=thirty_days_ago
+            ).aggregate(
+                total=Sum('actual_value', default=0)
+            )['total'] or 0
+            
+            # Count appointments
+            from apps.clients.models import Appointment
+            total_appointments = Appointment.objects.filter(
+                created_by=sales_user,
+                tenant=sales_user.tenant
+            ).count()
+            
+            recent_appointments = Appointment.objects.filter(
+                created_by=sales_user,
+                tenant=sales_user.tenant,
+                created_at__gte=thirty_days_ago
+            ).count()
+            
+            # Get last activity
+            last_activity = sales_user.last_login or sales_user.created_at
+            
+            # Calculate conversion rate
+            conversion_rate = 0
+            if total_deals > 0:
+                conversion_rate = (closed_deals / total_deals) * 100
+            
+            performance_data.append({
+                'user_id': sales_user.id,
+                'username': sales_user.username,
+                'full_name': sales_user.get_full_name() or sales_user.username,
+                'store_name': sales_user.store.name if sales_user.store else None,
+                'is_online': sales_user.last_login and sales_user.last_login > (timezone.now() - timedelta(minutes=15)),
+                'last_activity': last_activity,
+                'status': 'active' if sales_user.is_active else 'inactive',
+                
+                # Customer metrics
+                'total_customers': total_customers,
+                'recent_customers': recent_customers,
+                
+                # Deal metrics
+                'total_deals': total_deals,
+                'closed_deals': closed_deals,
+                'open_deals': total_deals - closed_deals,
+                
+                # Revenue metrics
+                'total_revenue': total_revenue,
+                'recent_revenue': recent_revenue,
+                'average_deal_value': total_revenue / closed_deals if closed_deals > 0 else 0,
+                
+                # Appointment metrics
+                'total_appointments': total_appointments,
+                'recent_appointments': recent_appointments,
+                
+                # Performance metrics
+                'conversion_rate': round(conversion_rate, 2),
+                'performance_score': self._calculate_performance_score(
+                    total_customers, closed_deals, total_revenue, conversion_rate
+                )
+            })
+        
+        # Sort by performance score (highest first)
+        performance_data.sort(key=lambda x: x['performance_score'], reverse=True)
+        
+        # Calculate overall summary
+        total_revenue_all = sum(u['total_revenue'] for u in performance_data)
+        total_customers_all = sum(u['total_customers'] for u in performance_data)
+        total_deals_all = sum(u['total_deals'] for u in performance_data)
+        
+        return Response({
+            'summary': {
+                'total_sales_users': len(performance_data),
+                'online_users': len([u for u in performance_data if u['is_online']]),
+                'active_users': len([u for u in performance_data if u['status'] == 'active']),
+                'total_revenue': total_revenue_all,
+                'total_customers': total_customers_all,
+                'total_deals': total_deals_all
+            },
+            'performance_data': performance_data
+        })
+    
+    def _calculate_performance_score(self, customers, deals, revenue, conversion_rate):
+        """Calculate a performance score based on multiple metrics"""
+        # Convert Decimal to float to avoid type mismatch
+        revenue_float = float(revenue) if revenue else 0.0
+        
+        # Weighted scoring system
+        customer_score = min(customers * 10, 100)  # Max 100 points for customers
+        deal_score = min(deals * 5, 100)           # Max 100 points for deals
+        revenue_score = min(revenue_float / 1000, 100)   # Max 100 points for revenue (₹100k = 100 points)
+        conversion_score = conversion_rate          # 0-100 points for conversion rate
+        
+        # Calculate weighted average
+        total_score = (customer_score * 0.25 + 
+                      deal_score * 0.25 + 
+                      revenue_score * 0.3 + 
+                      conversion_score * 0.2)
+        
+        return round(total_score, 1)
+
+
+class SalesPersonDetailView(APIView):
+    """
+    Get detailed profile and performance metrics for a specific inhouse_sales user.
+    Access rules:
+    - Business admin: Can see any sales person in their tenant
+    - Manager: Can see sales person in their store/tenant
+    - Others: Access denied
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, user_id):
+        current_user = request.user
+        
+        # Only business admin and manager can access
+        if current_user.role not in ['business_admin', 'manager']:
+            return Response(
+                {'detail': 'Access denied'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not current_user.tenant:
+            return Response(
+                {'detail': 'No tenant associated'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the sales person
+            sales_person = User.objects.get(
+                id=user_id,
+                role='inhouse_sales',
+                tenant=current_user.tenant,
+                is_active=True
+            )
+            
+            # Check if manager can access this sales person
+            if current_user.role == 'manager' and current_user.store:
+                if sales_person.store != current_user.store:
+                    return Response(
+                        {'detail': 'Access denied - sales person not in your store'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Sales person not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Import models for detailed metrics
+        from apps.clients.models import Client, Appointment
+        from apps.sales.models import SalesPipeline
+        from django.db.models import Sum, Count, Avg
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Time periods for analysis
+        now = timezone.now()
+        thirty_days_ago = now - timedelta(days=30)
+        ninety_days_ago = now - timedelta(days=90)
+        one_year_ago = now - timedelta(days=365)
+        
+        # Basic profile information
+        profile_data = {
+            'user_id': sales_person.id,
+            'username': sales_person.username,
+            'full_name': sales_person.get_full_name() or sales_person.username,
+            'email': sales_person.email,
+            'phone': sales_person.phone,
+            'address': sales_person.address,
+            'profile_picture': sales_person.profile_picture.url if sales_person.profile_picture else None,
+            'store_name': sales_person.store.name if sales_person.store else None,
+            'tenant_name': sales_person.tenant.name if sales_person.tenant else None,
+            'is_active': sales_person.is_active,
+            'joined_date': sales_person.created_at,
+            'last_login': sales_person.last_login,
+            'is_online': sales_person.last_login and sales_person.last_login > (now - timedelta(minutes=15))
+        }
+        
+        # Customer metrics
+        customer_metrics = {
+            'total_customers': Client.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant
+            ).count(),
+            'customers_30_days': Client.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=thirty_days_ago
+            ).count(),
+            'customers_90_days': Client.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=ninety_days_ago
+            ).count(),
+            'customers_1_year': Client.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=one_year_ago
+            ).count()
+        }
+        
+        # Deal metrics
+        deal_metrics = {
+            'total_deals': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant
+            ).count(),
+            'open_deals': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage__in=['prospecting', 'qualification', 'proposal', 'negotiation']
+            ).count(),
+            'closed_won_deals': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage='closed_won'
+            ).count(),
+            'closed_lost_deals': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage='closed_lost'
+            ).count(),
+            'deals_30_days': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=thirty_days_ago
+            ).count()
+        }
+        
+        # Revenue metrics
+        revenue_data = SalesPipeline.objects.filter(
+            sales_representative=sales_person,
+            tenant=sales_person.tenant,
+            stage='closed_won'
+        ).aggregate(
+            total_revenue=Sum('expected_value', default=0),
+            avg_deal_value=Avg('expected_value', default=0),
+            total_deals=Count('id')
+        )
+        
+        revenue_metrics = {
+            'total_revenue': revenue_data['total_revenue'] or 0,
+            'average_deal_value': revenue_data['avg_deal_value'] or 0,
+            'revenue_30_days': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage='closed_won',
+                actual_close_date__gte=thirty_days_ago
+            ).aggregate(total=Sum('actual_value', default=0))['total'] or 0,
+            'revenue_90_days': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage='closed_won',
+                actual_close_date__gte=ninety_days_ago
+            ).aggregate(total=Sum('actual_value', default=0))['total'] or 0,
+            'revenue_1_year': SalesPipeline.objects.filter(
+                sales_representative=sales_person,
+                tenant=sales_person.tenant,
+                stage='closed_won',
+                actual_close_date__gte=one_year_ago
+            ).aggregate(total=Sum('actual_value', default=0))['total'] or 0
+        }
+        
+        # Appointment metrics
+        appointment_metrics = {
+            'total_appointments': Appointment.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant
+            ).count(),
+            'appointments_30_days': Appointment.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=thirty_days_ago
+            ).count(),
+            'appointments_90_days': Appointment.objects.filter(
+                created_by=sales_person,
+                tenant=sales_person.tenant,
+                created_at__gte=ninety_days_ago
+            ).count()
+        }
+        
+        # Performance metrics
+        conversion_rate = 0
+        if deal_metrics['total_deals'] > 0:
+            conversion_rate = (deal_metrics['closed_won_deals'] / deal_metrics['total_deals']) * 100
+        
+        performance_metrics = {
+            'conversion_rate': round(conversion_rate, 2),
+            'performance_score': self._calculate_performance_score(
+                customer_metrics['total_customers'],
+                deal_metrics['closed_won_deals'],
+                revenue_metrics['total_revenue'],
+                conversion_rate
+            ),
+            'efficiency_rating': self._calculate_efficiency_rating(
+                customer_metrics['customers_30_days'],
+                deal_metrics['deals_30_days'],
+                revenue_metrics['revenue_30_days']
+            )
+        }
+        
+        # Recent activity (last 10 activities)
+        recent_activities = []
+        
+        # Recent customers
+        recent_customers = Client.objects.filter(
+            created_by=sales_person,
+            tenant=sales_person.tenant
+        ).order_by('-created_at')[:5]
+        
+        for customer in recent_customers:
+            recent_activities.append({
+                'type': 'customer_created',
+                'title': f'New customer: {customer.first_name} {customer.last_name}',
+                'date': customer.created_at,
+                'value': None
+            })
+        
+        # Recent deals
+        recent_deals = SalesPipeline.objects.filter(
+            sales_representative=sales_person,
+            tenant=sales_person.tenant
+        ).order_by('-created_at')[:5]
+        
+        for deal in recent_deals:
+            recent_activities.append({
+                'type': 'deal_created',
+                'title': f'Deal: {deal.title}',
+                'date': deal.created_at,
+                'value': deal.expected_value
+            })
+        
+        # Sort activities by date
+        recent_activities.sort(key=lambda x: x['date'], reverse=True)
+        recent_activities = recent_activities[:10]
+        
+        return Response({
+            'profile': profile_data,
+            'metrics': {
+                'customers': customer_metrics,
+                'deals': deal_metrics,
+                'revenue': revenue_metrics,
+                'appointments': appointment_metrics,
+                'performance': performance_metrics
+            },
+            'recent_activities': recent_activities,
+            'summary': {
+                'total_customers': customer_metrics['total_customers'],
+                'total_revenue': revenue_metrics['total_revenue'],
+                'total_deals': deal_metrics['total_deals'],
+                'conversion_rate': performance_metrics['conversion_rate'],
+                'performance_score': performance_metrics['performance_score']
+            }
+        })
+    
+    def _calculate_performance_score(self, customers, deals, revenue, conversion_rate):
+        """Calculate a performance score based on multiple metrics"""
+        # Convert Decimal to float to avoid type mismatch
+        revenue_float = float(revenue) if revenue else 0.0
+        
+        # Weighted scoring system
+        customer_score = min(customers * 10, 100)  # Max 100 points for customers
+        deal_score = min(deals * 5, 100)           # Max 100 points for deals
+        revenue_score = min(revenue_float / 1000, 100)   # Max 100 points for revenue (₹100k = 100 points)
+        conversion_score = conversion_rate          # 0-100 points for conversion rate
+        
+        # Calculate weighted average
+        total_score = (customer_score * 0.25 + 
+                      deal_score * 0.25 + 
+                      revenue_score * 0.3 + 
+                      conversion_score * 0.2)
+        
+        return round(total_score, 1)
+    
+    def _calculate_efficiency_rating(self, recent_customers, recent_deals, recent_revenue):
+        """Calculate efficiency rating based on recent performance"""
+        if recent_customers == 0 and recent_deals == 0:
+            return 'Low'
+        
+        # Simple rating based on recent activity
+        total_activity = recent_customers + recent_deals
+        if total_activity >= 10:
+            return 'High'
+        elif total_activity >= 5:
+            return 'Medium'
+        else:
+            return 'Low'
 
 
 

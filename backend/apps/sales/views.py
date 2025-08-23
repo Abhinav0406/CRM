@@ -521,8 +521,7 @@ class PipelineDashboardView(generics.GenericAPIView, ScopedVisibilityMixin):
                 stage__in=[SalesPipeline.Stage.CLOSED_WON, SalesPipeline.Stage.CLOSED_LOST]
             ).order_by('next_action_date')[:5]
             
-            print(f"Recent pipelines count: {recent_pipelines.count()}")
-            print(f"Upcoming actions count: {upcoming_actions.count()}")
+
             
             return Response({
                 'stage_summary': stage_summary,
@@ -530,7 +529,6 @@ class PipelineDashboardView(generics.GenericAPIView, ScopedVisibilityMixin):
                 'upcoming_actions': SalesPipelineSerializer(upcoming_actions, many=True).data,
             })
         except Exception as e:
-            print(f"Error in PipelineDashboardView: {str(e)}")
             return Response(
                 {'error': 'Internal server error'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -560,7 +558,6 @@ class SalesExportView(generics.GenericAPIView, ScopedVisibilityMixin):
             serializer = SaleSerializer(queryset, many=True)
             return Response(serializer.data)
         elif format_type == 'csv':
-            # TODO: Implement CSV export
             return Response({'message': 'CSV export not implemented yet'})
         else:
             return Response(
@@ -589,7 +586,6 @@ class PipelineExportView(generics.GenericAPIView, ScopedVisibilityMixin):
             serializer = SalesPipelineSerializer(queryset, many=True)
             return Response(serializer.data)
         elif format_type == 'csv':
-            # TODO: Implement CSV export
             return Response({'message': 'CSV export not implemented yet'})
         else:
             return Response(

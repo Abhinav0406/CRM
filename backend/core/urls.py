@@ -16,7 +16,7 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
     # API Routes
-    path('api/auth/', include('apps.users.urls')),
+    path('api/', include('apps.users.urls')),
     path('api/tenants/', include('apps.tenants.urls')),
     path('api/clients/', include('apps.clients.urls')),
     path('api/', include('apps.stores.urls')),
@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/marketing/', include('apps.marketing.urls')),
     path('api/support/', include('apps.support.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
+    path('api/exhibition/', include('apps.exhibition.urls')),
 ]
 
 # Serve static and media files in development
@@ -40,8 +41,4 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     
-    # Debug toolbar
-    import debug_toolbar
-    urlpatterns += [
-        path('__debug__/', include(debug_toolbar.urls)),
-    ]
+    # Debug toolbar removed for production

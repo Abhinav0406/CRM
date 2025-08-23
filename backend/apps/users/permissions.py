@@ -14,6 +14,9 @@ class IsRoleAllowed(BasePermission):
             return False
         # If allowed_roles is set on the view, use that
         allowed_roles = getattr(view, 'allowed_roles', self.allowed_roles)
+        
+
+        
         return user.role in allowed_roles
 
     @classmethod

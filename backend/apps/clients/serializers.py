@@ -81,6 +81,27 @@ class ClientSerializer(serializers.ModelSerializer):
             }
         return None
     
+    def validate_date_of_birth(self, value):
+        """Handle empty strings for date_of_birth field"""
+        if value == "" or value is None:
+            return None
+        return value
+    
+    def validate_anniversary_date(self, value):
+        """Handle empty strings for anniversary_date field"""
+        if value == "" or value is None:
+            return None
+        return value
+    
+    def validate(self, attrs):
+        """General validation to handle empty strings for date fields"""
+        # Convert empty strings to None for date fields
+        for field_name in ['date_of_birth', 'anniversary_date']:
+            if field_name in attrs and attrs[field_name] == "":
+                attrs[field_name] = None
+        
+        return attrs
+    
     def get_customer_interests_display(self, obj):
         """Get customer interests for display"""
         try:

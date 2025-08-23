@@ -108,6 +108,18 @@ const navigationItems: NavItem[] = [
     roles: ['business_admin'],
   },
   {
+    title: 'Sales Team',
+    href: '/business-admin/sales-team',
+    icon: Users,
+    roles: ['business_admin'],
+  },
+  {
+    title: 'Purchases',
+    href: '/business-admin/purchases',
+    icon: ShoppingBag,
+    roles: ['business_admin'],
+  },
+  {
     title: 'Appointments',
     href: '/business-admin/appointments',
     icon: Calendar,
@@ -145,6 +157,12 @@ const navigationItems: NavItem[] = [
         roles: ['business_admin'],
       },
     ],
+  },
+  {
+    title: 'Exhibition Leads',
+    href: '/business-admin/exhibition',
+    icon: Gift,
+    roles: ['business_admin'],
   },
   {
     title: 'WhatsApp',
@@ -313,6 +331,18 @@ const navigationItems: NavItem[] = [
     icon: TrendingUp,
     roles: ['manager'],
   },
+  {
+    title: 'Sales Team',
+    href: '/manager/sales-team',
+    icon: Users,
+    roles: ['manager'],
+  },
+  {
+    title: 'Purchases',
+    href: '/manager/purchases',
+    icon: ShoppingBag,
+    roles: ['manager'],
+  },
 
   {
     title: 'Analytics',
@@ -324,6 +354,12 @@ const navigationItems: NavItem[] = [
     title: 'Escalations',
     href: '/manager/escalations',
     icon: AlertTriangle,
+    roles: ['manager'],
+  },
+  {
+    title: 'Exhibition Leads',
+    href: '/manager/exhibition',
+    icon: Gift,
     roles: ['manager'],
   },
   {
@@ -401,6 +437,12 @@ const navigationItems: NavItem[] = [
     icon: MessageSquare,
     roles: ['marketing'],
   },
+  {
+    title: 'Exhibition Leads',
+    href: '/marketing/exhibition',
+    icon: Gift,
+    roles: ['marketing'],
+  },
   // Sales Team Navigation
   {
     title: 'Dashboard',
@@ -418,6 +460,12 @@ const navigationItems: NavItem[] = [
     title: 'Sales Pipeline',
     href: '/sales/pipeline',
     icon: TrendingUp,
+    roles: ['sales'],
+  },
+  {
+    title: 'Purchases',
+    href: '/sales/purchases',
+    icon: ShoppingBag,
     roles: ['sales'],
   },
   {
@@ -443,6 +491,12 @@ const navigationItems: NavItem[] = [
     title: 'Escalations',
     href: '/sales/escalations',
     icon: AlertTriangle,
+    roles: ['sales'],
+  },
+  {
+    title: 'Exhibition Leads',
+    href: '/sales/exhibition',
+    icon: Gift,
     roles: ['sales'],
   },
   {
@@ -474,6 +528,12 @@ const navigationItems: NavItem[] = [
     title: 'Appointments',
     href: '/telecaller/appointments',
     icon: Calendar,
+    roles: ['telecaller'],
+  },
+  {
+    title: 'Exhibition Leads',
+    href: '/telecaller/exhibition',
+    icon: Gift,
     roles: ['telecaller'],
   },
   {

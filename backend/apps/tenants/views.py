@@ -615,7 +615,7 @@ class BusinessDashboardView(APIView):
                     created_at__lte=end_date
                 )
                 
-                # Debug: Check all time data
+
                 all_time_sales = Sale.objects.filter(**store_sales_filter).count()
                 all_time_pipeline = SalesPipeline.objects.filter(**store_pipeline_filter, stage='closed_won').count()
                 

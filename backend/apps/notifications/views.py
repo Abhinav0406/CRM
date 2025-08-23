@@ -14,11 +14,46 @@ from .serializers import (
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
-    permission_classes = [AllowAny]  # Temporarily disable authentication for testing
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        # Temporarily return all notifications for testing
-        return Notification.objects.all()
+        """Filter notifications based on user's tenant and store access"""
+        user = self.request.user
+        
+        print(f"=== NOTIFICATION FILTERING DEBUG ===")
+        print(f"User: {user.username}")
+        print(f"User role: {user.role}")
+        print(f"User tenant: {user.tenant}")
+        print(f"User store: {user.store}")
+        print(f"User is_active: {user.is_active}")
+        
+        if not user.is_authenticated:
+            print("User not authenticated, returning none")
+            return Notification.objects.none()
+        
+        # Business admin can see all notifications in their tenant
+        if user.role == 'business_admin':
+            queryset = Notification.objects.filter(tenant=user.tenant)
+            print(f"Business admin - found {queryset.count()} notifications in tenant")
+            return queryset
+        
+        # Store users can see their store's notifications and their own
+        if user.store:
+            queryset = Notification.objects.filter(
+                Q(tenant=user.tenant) &
+                (Q(store=user.store) | Q(user=user))
+            )
+            print(f"Store user - found {queryset.count()} notifications (store: {user.store.name})")
+            print(f"Store notifications: {queryset.filter(store=user.store).count()}")
+            print(f"User's own notifications: {queryset.filter(user=user).count()}")
+            return queryset
+        
+        # Users without store can only see their own notifications
+        queryset = Notification.objects.filter(
+            Q(tenant=user.tenant) & Q(user=user)
+        )
+        print(f"User without store - found {queryset.count()} own notifications")
+        return queryset
     
     def get_serializer_class(self):
         if self.action == 'create':

@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiService, Client } from "@/lib/api-service";
 import { useAuth } from "@/hooks/useAuth";
-import { Calendar, Phone, Mail, MapPin, User, Clock, Edit, Trash2, X as XIcon } from "lucide-react";
+import { Calendar, Phone, Mail, MapPin, User, Clock, Edit, Trash2, X as XIcon, ArrowUpRight } from "lucide-react";
 
 interface CustomerDetailModalProps {
   open: boolean;
@@ -127,9 +127,7 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 
@@ -196,6 +194,31 @@ export function CustomerDetailModal({ open, onClose, customerId, onEdit, onDelet
               </DialogDescription>
             </div>
             <div className="flex items-center gap-2">
+              {customer.status === 'exhibition' && (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={async () => {
+                    try {
+                      const response = await apiService.promoteExhibitionLead(customer.id.toString());
+                      
+                      if (response.success) {
+                        // Refresh customer details
+                        fetchCustomerDetails();
+                        // Show success message
+                        alert('Customer promoted to main customer database!');
+                      }
+                    } catch (error) {
+                      console.error('Error promoting customer:', error);
+                      alert('Failed to promote customer');
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <ArrowUpRight className="w-4 h-4 mr-2" />
+                  Promote to Main Customer
+                </Button>
+              )}
               <Button 
                 variant="outline" 
                 size="sm" 

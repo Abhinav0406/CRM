@@ -41,6 +41,30 @@ class ImportExportPermission(permissions.BasePermission):
         return user.role in ['platform_admin', 'business_admin', 'manager']
 
 
+"""
+CLIENT MANAGEMENT SYSTEM - EXHIBITION LEADS SEPARATION
+
+IMPORTANT: Exhibition leads are automatically excluded from the main customer system
+until they are promoted. This ensures clean data separation:
+
+1. Exhibition leads (status='exhibition') are ONLY visible in:
+   - /api/exhibition/exhibition-leads/ (exhibition leads view)
+   - Django admin exhibition filter
+
+2. Main customer system (this view) EXCLUDES exhibition leads:
+   - /api/clients/clients/ (main customer list)
+   - All customer-related views and analytics
+   - Customer search and management
+
+3. When an exhibition lead is promoted:
+   - Status changes from 'exhibition' to 'lead'
+   - Lead becomes visible in main customer system
+   - Lead disappears from exhibition leads view
+
+This separation prevents exhibition leads from cluttering the main customer database
+and ensures they only appear where they belong.
+"""
+
 class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     serializer_class = ClientSerializer
     permission_classes = [IsRoleAllowed.for_roles(['inhouse_sales','manager','business_admin'])]
@@ -55,12 +79,17 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
         return super().get_permissions()
     
     def get_queryset(self):
-        """Filter clients by user scope and exclude soft-deleted clients"""
+        """Filter clients by user scope and exclude soft-deleted clients and exhibition leads"""
         # For restore and permanent_delete actions, include soft-deleted clients
         if hasattr(self, 'action') and self.action in ['restore', 'permanent_delete']:
             queryset = self.get_scoped_queryset(Client)
         else:
             queryset = self.get_scoped_queryset(Client, is_deleted=False)
+        
+        # CRITICAL: Exclude exhibition leads from main customer list
+        # Exhibition leads should ONLY be visible in the exhibition leads view
+        # This ensures complete separation until they are promoted
+        queryset = queryset.exclude(status='exhibition')
         
         return queryset
     
@@ -243,35 +272,94 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
             from apps.notifications.models import Notification
             from apps.users.models import User
             
+            print(f"=== CREATING CUSTOMER NOTIFICATIONS ===")
+            print(f"Client: {client.first_name} {client.last_name}")
+            print(f"Client store: {client.store}")
+            print(f"Client tenant: {client.tenant}")
+            print(f"Created by user: {created_by_user.username} (role: {created_by_user.role})")
+            print(f"Created by user tenant: {created_by_user.tenant}")
+            print(f"Created by user store: {created_by_user.store}")
+            
             # Get all users who should receive notifications
             users_to_notify = []
             
             # The user who created the customer should get notified
             users_to_notify.append(created_by_user)
+            print(f"Added creator: {created_by_user.username}")
             
             # Business admin should always get notified
             if created_by_user.tenant:
                 business_admins = User.objects.filter(
                     tenant=created_by_user.tenant,
-                    role='business_admin'
+                    role='business_admin',
+                    is_active=True
                 )
+                print(f"Found {business_admins.count()} business admins: {[f'{admin.username} (active: {admin.is_active})' for admin in business_admins]}")
                 users_to_notify.extend(business_admins)
             
-            # Store manager should get notified if customer is assigned to their store
+            # Store users should get notified if customer is assigned to their store
             if client.store:
+                print(f"Client has store: {client.store.name}")
+                
+                # Store manager
                 store_managers = User.objects.filter(
                     tenant=created_by_user.tenant,
                     role='manager',
-                    store=client.store
+                    store=client.store,
+                    is_active=True
                 )
+                print(f"Found {store_managers.count()} store managers: {[f'{manager.username} (store: {manager.store.name if manager.store else 'None'})' for manager in store_managers]}")
                 users_to_notify.extend(store_managers)
             
-            # Remove duplicates (in case created_by_user is also a business_admin or manager)
+                # In-house sales users
+                inhouse_sales_users = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='inhouse_sales',
+                    store=client.store,
+                    is_active=True
+                )
+                print(f"Found {inhouse_sales_users.count()} inhouse sales users: {[f'{user.username} (store: {user.store.name if user.store else 'None'})' for user in inhouse_sales_users]}")
+                users_to_notify.extend(inhouse_sales_users)
+                
+                # Tele-calling users
+                telecalling_users = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='tele_calling',
+                    store=client.store,
+                    is_active=True
+                )
+                print(f"Found {telecalling_users.count()} telecalling users: {[f'{user.username} (store: {user.store.name if user.store else 'None'})' for user in telecalling_users]}")
+                users_to_notify.extend(telecalling_users)
+                
+                # Marketing users (they might need to know about new customers for campaigns)
+                marketing_users = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='marketing',
+                    store=client.store,
+                    is_active=True
+                )
+                print(f"Found {marketing_users.count()} marketing users: {[f'{user.username} (store: {user.store.name if user.store else 'None'})' for user in marketing_users]}")
+                users_to_notify.extend(marketing_users)
+            else:
+                print(f"Client has NO store assigned - store users won't be notified")
+                
+                # If client has no store, notify all managers in the tenant
+                all_managers = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='manager',
+                    is_active=True
+                )
+                print(f"Found {all_managers.count()} managers in tenant (no store): {[f'{manager.username} (store: {manager.store.name if manager.store else 'None'})' for manager in all_managers]}")
+                users_to_notify.extend(all_managers)
+            
+            # Remove duplicates (in case created_by_user has multiple roles or is in multiple categories)
             unique_users = list({user.id: user for user in users_to_notify}.values())
+            print(f"Total users to notify (before deduplication): {len(users_to_notify)}")
+            print(f"Unique users to notify (after deduplication): {len(unique_users)}")
             
             # Create notifications for each user
             for user in unique_users:
-                Notification.objects.create(
+                notification = Notification.objects.create(
                     user=user,
                     tenant=client.tenant,
                     store=client.store,
@@ -284,11 +372,15 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
                     action_text='View Customer',
                     is_persistent=False
                 )
+                print(f"Created notification {notification.id} for user {user.username} (role: {user.role})")
             
             print(f"Created {len(unique_users)} notifications for new customer {client.first_name} {client.last_name}")
+            print(f"Users notified: {[f'{user.username} ({user.role})' for user in unique_users]}")
             
         except Exception as e:
             print(f"Error creating notifications for new customer: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             # Don't fail the customer creation if notification creation fails
 
     def update(self, request, *args, **kwargs):
@@ -570,8 +662,8 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
     #             )
 
     @action(detail=False, methods=['post'], permission_classes=[ImportExportPermission])
-    def import_csv(self, request):
-        """Import customers from CSV - only for business admin and managers"""
+    def import_file(self, request):
+        """Import customers from CSV, XLSX, or XLS files - only for business admin and managers"""
         try:
             if 'file' not in request.FILES:
                 return Response(
@@ -579,103 +671,260 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            csv_file = request.FILES['file']
+            file = request.FILES['file']
             
             # Validate file type
-            if not csv_file.name.endswith('.csv'):
+            valid_extensions = ['.csv', '.xlsx', '.xls']
+            if not any(file.name.lower().endswith(ext) for ext in valid_extensions):
                 return Response(
-                    {'error': 'Please upload a CSV file'}, 
+                    {'error': 'Please upload a CSV, XLSX, or XLS file'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Read CSV file
-            decoded_file = csv_file.read().decode('utf-8')
-            csv_data = csv.DictReader(io.StringIO(decoded_file))
+            # Process file based on type
+            if file.name.lower().endswith('.csv'):
+                # Read CSV file
+                decoded_file = file.read().decode('utf-8')
+                csv_data = csv.DictReader(io.StringIO(decoded_file))
+                rows = list(csv_data)
+            else:
+                # Read Excel file (XLSX or XLS)
+                try:
+                    import openpyxl
+                    from openpyxl import load_workbook
+                    
+                    # Load the workbook
+                    wb = load_workbook(file, data_only=True)
+                    ws = wb.active
+                    
+                    # Get headers from first row
+                    headers = []
+                    for cell in ws[1]:
+                        headers.append(cell.value or f'column_{len(headers)}')
+                    
+                    # Convert Excel data to list of dictionaries
+                    rows = []
+                    for row_num in range(2, ws.max_row + 1):  # Start from row 2 (skip header)
+                        row_data = {}
+                        for col_num, header in enumerate(headers, 1):
+                            cell_value = ws.cell(row=row_num, column=col_num).value
+                            row_data[header] = str(cell_value) if cell_value is not None else ''
+                        rows.append(row_data)
+                        
+                except ImportError:
+                    return Response(
+                        {'error': 'Excel file processing not available. Please install openpyxl.'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                except Exception as e:
+                    return Response(
+                        {'error': f'Error reading Excel file: {str(e)}'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
             imported_count = 0
             errors = []
             
+            print(f"=== IMPORT START ===")
+            print(f"User: {request.user}")
+            print(f"User tenant: {request.user.tenant}")
+            print(f"User store: {request.user.store}")
+            print(f"Total rows to process: {len(rows)}")
+            print(f"First row sample: {rows[0] if rows else 'No rows'}")
+            
+            # Check if user has required assignments
+            if not request.user.tenant:
+                return Response(
+                    {'error': 'User does not have a tenant assigned. Please contact your administrator.'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not request.user.store:
+                return Response(
+                    {'error': 'User does not have a store assigned. Please contact your administrator to assign you to a store.'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             with transaction.atomic():
-                for row_num, row in enumerate(csv_data, start=2):  # Start from 2 to account for header
+                for row_num, row in enumerate(rows, start=2):  # Start from 2 to account for header
                     try:
-                        # Clean and validate data
+                        # Clean and validate data - email is required by serializer, so we need to handle this
                         email = row.get('email', '').strip()
-                        if not email:
-                            errors.append(f'Row {row_num}: Email is required')
+                        phone = row.get('phone', '').strip()
+                        
+                        # Require either email or phone
+                        if not email and not phone:
+                            errors.append(f'Row {row_num}: Either email or phone is required')
                             continue
                         
-                        # Check if customer already exists
-                        if Client.objects.filter(email=email, tenant=request.user.tenant, is_deleted=False).exists():
-                            errors.append(f'Row {row_num}: Customer with email {email} already exists')
+                        # If no email provided, generate a placeholder email using phone
+                        if not email and phone:
+                            email = f"imported_{phone.replace('+', '').replace('-', '').replace(' ', '')}@imported.local"
+                        
+                        # Check if customer already exists (by email or phone)
+                        existing_customer = None
+                        if email:
+                            existing_customer = Client.objects.filter(email=email, tenant=request.user.tenant, is_deleted=False).first()
+                        if not existing_customer and phone:
+                            existing_customer = Client.objects.filter(phone=phone, tenant=request.user.tenant, is_deleted=False).first()
+                        
+                        if existing_customer:
+                            identifier = email if email else phone
+                            errors.append(f'Row {row_num}: Customer with {identifier} already exists')
                             continue
                         
-                        # Prepare data for creation
+                        # Prepare data for creation - email is now guaranteed to have a value
                         client_data = {
-                            'first_name': row.get('first_name', '').strip(),
-                            'last_name': row.get('last_name', '').strip(),
+                            'first_name': row.get('first_name', '').strip() or '',
+                            'last_name': row.get('last_name', '').strip() or '',
                             'email': email,
-                            'phone': row.get('phone', '').strip(),
+                            'phone': phone or '',
                             'customer_type': row.get('customer_type', 'individual'),
-                            'address': row.get('address', '').strip(),
-                            'city': row.get('city', '').strip(),
-                            'state': row.get('state', '').strip(),
-                            'country': row.get('country', '').strip(),
-                            'postal_code': row.get('postal_code', '').strip(),
-                            'preferred_metal': row.get('preferred_metal', '').strip(),
-                            'preferred_stone': row.get('preferred_stone', '').strip(),
-                            'ring_size': row.get('ring_size', '').strip(),
-                            'budget_range': row.get('budget_range', '').strip(),
-                            'lead_source': row.get('lead_source', '').strip(),
-                            'notes': row.get('notes', '').strip(),
-                            'community': row.get('community', '').strip(),
-                            'mother_tongue': row.get('mother_tongue', '').strip(),
-                            'reason_for_visit': row.get('reason_for_visit', '').strip(),
-                            'age_of_end_user': row.get('age_of_end_user', '').strip(),
-                            'saving_scheme': row.get('saving_scheme', '').strip(),
-                            'catchment_area': row.get('catchment_area', '').strip(),
-                            'next_follow_up': row.get('next_follow_up', '').strip(),
-                            'summary_notes': row.get('summary_notes', '').strip(),
+                            'address': row.get('address', '').strip() or '',
+                            'city': row.get('city', '').strip() or '',
+                            'state': row.get('state', '').strip() or '',
+                            'country': row.get('country', '').strip() or '',
+                            'postal_code': row.get('postal_code', '').strip() or '',
+                            'preferred_metal': row.get('preferred_metal', '').strip() or '',
+                            'preferred_stone': row.get('preferred_stone', '').strip() or '',
+                            'ring_size': row.get('ring_size', '').strip() or '',
+                            'budget_range': row.get('budget_range', '').strip() or '',
+                            'lead_source': row.get('lead_source', '').strip() or '',
+                            'notes': row.get('notes', '').strip() or '',
+                            'community': row.get('community', '').strip() or '',
+                            'mother_tongue': row.get('mother_tongue', '').strip() or '',
+                            'reason_for_visit': row.get('reason_for_visit', '').strip() or '',
+                            'age_of_end_user': row.get('age_of_end_user', '').strip() or '',
+                            'saving_scheme': row.get('saving_scheme', '').strip() or '',
+                            'catchment_area': row.get('catchment_area', '').strip() or '',
+                            'next_follow_up': row.get('next_follow_up', '').strip() or '',
+                            'summary_notes': row.get('summary_notes', '').strip() or '',
                             'status': row.get('status', 'lead'),
                             'tenant': request.user.tenant.id if request.user.tenant else None,
+                            'store': request.user.store.id if request.user.store else None,
                         }
                         
-                        # Handle date fields
-                        if row.get('date_of_birth'):
+                        # Handle date fields - completely exclude if empty
+                        date_of_birth = row.get('date_of_birth', '').strip()
+                        if date_of_birth and date_of_birth != '':
                             try:
-                                client_data['date_of_birth'] = datetime.strptime(row['date_of_birth'], '%Y-%m-%d').date()
+                                client_data['date_of_birth'] = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+                                print(f"Row {row_num}: Parsed date_of_birth: {client_data['date_of_birth']}")
                             except ValueError:
-                                pass  # Skip invalid date
+                                print(f"Row {row_num}: Invalid date_of_birth format: '{date_of_birth}'. Expected YYYY-MM-DD")
+                                # Don't add invalid date to client_data
+                        # If empty, don't add the field at all
                         
-                        if row.get('anniversary_date'):
+                        anniversary_date = row.get('anniversary_date', '').strip()
+                        if anniversary_date and anniversary_date != '':
                             try:
-                                client_data['anniversary_date'] = datetime.strptime(row['anniversary_date'], '%Y-%m-%d').date()
+                                client_data['anniversary_date'] = datetime.strptime(anniversary_date, '%Y-%m-%d').date()
+                                print(f"Row {row_num}: Parsed anniversary_date: {client_data['anniversary_date']}")
                             except ValueError:
-                                pass  # Skip invalid date
+                                print(f"Row {row_num}: Invalid anniversary_date format: '{anniversary_date}'. Expected YYYY-MM-DD")
+                                # Don't add invalid date to client_data
+                        # If empty, don't add the field at all
                         
-                        # Create client
-                        serializer = self.get_serializer(data=client_data)
+                        # Clean data - remove empty strings and None values
+                        cleaned_data = {}
+                        for key, value in client_data.items():
+                            if value is not None and value != '':
+                                cleaned_data[key] = value
+                            elif value == '':
+                                print(f"Row {row_num}: Removing empty string for field '{key}'")
+                        
+                        print(f"=== IMPORT DEBUG - Row {row_num} ===")
+                        print(f"Original client data: {client_data}")
+                        print(f"Cleaned client data: {cleaned_data}")
+                        print(f"Date fields - date_of_birth: {cleaned_data.get('date_of_birth')}, anniversary_date: {cleaned_data.get('anniversary_date')}")
+                        
+                        # Use cleaned data for serializer
+                        client_data = cleaned_data
+                        
+                        # Final check - ensure no empty strings are passed to serializer
+                        for key, value in client_data.items():
+                            if value == '':
+                                print(f"Row {row_num}: WARNING - Empty string found for field '{key}', removing it")
+                                del client_data[key]
+                        
+                        print(f"Final data for serializer: {client_data}")
+                        
+                        # Add request context to serializer for validation
+                        serializer = self.get_serializer(data=client_data, context={'request': request})
+                        print(f"Serializer context: {serializer.context}")
+                        
                         if serializer.is_valid():
-                            client = serializer.save()
-                            
-                            # Handle tags if present
-                            tags_str = row.get('tags', '').strip()
-                            if tags_str:
-                                tag_names = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
-                                for tag_name in tag_names:
-                                    # You might want to create tags if they don't exist
-                                    # For now, we'll skip tag creation
-                                    pass
-                            
-                            imported_count += 1
+                            try:
+                                # Save the client
+                                client = serializer.save()
+                                print(f"Client created successfully: {client.id}")
+                                
+                                # Ensure tenant and store are set (in case they weren't set by serializer)
+                                if not client.tenant and request.user.tenant:
+                                    client.tenant = request.user.tenant
+                                if not client.store and request.user.store:
+                                    client.store = request.user.store
+                                
+                                if client.tenant or client.store:
+                                    client.save()
+                                    print(f"Client updated with tenant: {client.tenant}, store: {client.store}")
+                                
+                                # Handle tags if present
+                                tags_str = row.get('tags', '').strip()
+                                if tags_str:
+                                    tag_names = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+                                    for tag_name in tag_names:
+                                        # You might want to create tags if they don't exist
+                                        # For now, we'll skip tag creation
+                                        pass
+                                
+                                imported_count += 1
+                            except Exception as save_error:
+                                print(f"=== SAVE ERROR - Row {row_num} ===")
+                                print(f"Error saving client: {save_error}")
+                                print(f"Error type: {type(save_error)}")
+                                print(f"Error args: {getattr(save_error, 'args', 'No args')}")
+                                import traceback
+                                print(f"Traceback: {traceback.format_exc()}")
+                                
+                                # Get more detailed error information
+                                if hasattr(save_error, 'detail'):
+                                    error_detail = str(save_error.detail)
+                                elif hasattr(save_error, 'message'):
+                                    error_detail = str(save_error.message)
+                                else:
+                                    error_detail = str(save_error)
+                                
+                                errors.append(f'Row {row_num}: Failed to save customer: {error_detail}')
+                                continue
                         else:
-                            errors.append(f'Row {row_num}: {serializer.errors}')
+                            # Format serializer errors in a more user-friendly way
+                            print(f"=== VALIDATION FAILED - Row {row_num} ===")
+                            print(f"Serializer errors: {serializer.errors}")
+                            
+                            error_messages = []
+                            for field, field_errors in serializer.errors.items():
+                                if isinstance(field_errors, list):
+                                    for error in field_errors:
+                                        if hasattr(error, 'code'):
+                                            error_messages.append(f"{field}: {error}")
+                                        else:
+                                            error_messages.append(f"{field}: {error}")
+                                else:
+                                    error_messages.append(f"{field}: {field_errors}")
+                            
+                            if error_messages:
+                                errors.append(f'Row {row_num}: {"; ".join(error_messages)}')
+                            else:
+                                errors.append(f'Row {row_num}: Validation failed')
                     
                     except Exception as e:
-                        errors.append(f'Row {row_num}: {str(e)}')
+                        errors.append(f'Row {row_num}: An error occurred while creating the customer. Please try again.')
             
             return Response({
                 'message': f'Import completed. {imported_count} customers imported successfully.',
-                'imported_count': imported_count,
+                'imported': imported_count,
+                'failed': len(errors),
                 'errors': errors
             }, status=status.HTTP_200_OK)
             
@@ -785,59 +1034,109 @@ class ClientViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
 
     @action(detail=False, methods=['get'], permission_classes=[ImportExportPermission])
     def download_template(self, request):
-        """Download CSV template for import - only for business admin and managers"""
+        """Download CSV or Excel template for import - only for business admin and managers"""
         try:
-            response = HttpResponse(content_type='text/csv')
-            response['Content-Disposition'] = 'attachment; filename="customer_import_template.csv"'
+            # Get format preference from query parameter
+            format_type = request.GET.get('format', 'csv').lower()
             
-            # Define CSV fields
-            fieldnames = [
-                'first_name', 'last_name', 'email', 'phone', 'customer_type',
-                'address', 'city', 'state', 'country', 'postal_code',
-                'date_of_birth', 'anniversary_date', 'preferred_metal', 'preferred_stone',
-                'ring_size', 'budget_range', 'lead_source', 'notes', 'community',
-                'mother_tongue', 'reason_for_visit', 'age_of_end_user', 'saving_scheme',
-                'catchment_area', 'next_follow_up', 'summary_notes', 'status', 'tags'
-            ]
-            
-            writer = csv.DictWriter(response, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            # Add example row
-            example_row = {
-                'first_name': 'John',
-                'last_name': 'Doe',
-                'email': 'john.doe@example.com',
-                'phone': '+1234567890',
-                'customer_type': 'individual',
-                'address': '123 Main St',
-                'city': 'New York',
-                'state': 'NY',
-                'country': 'USA',
-                'postal_code': '10001',
-                'date_of_birth': '1990-01-01',
-                'anniversary_date': '2015-06-15',
-                'preferred_metal': 'Gold',
-                'preferred_stone': 'Diamond',
-                'ring_size': '7',
-                'budget_range': '1000-5000',
-                'lead_source': 'website',
-                'notes': 'Interested in engagement rings',
-                'community': 'General',
-                'mother_tongue': 'English',
-                'reason_for_visit': 'Engagement Ring',
-                'age_of_end_user': '25-35',
-                'saving_scheme': 'Monthly',
-                'catchment_area': 'Downtown',
-                'next_follow_up': 'Call next week',
-                'summary_notes': 'High potential customer',
-                'status': 'lead',
-                'tags': 'High Value, Engagement, Gold'
-            }
-            writer.writerow(example_row)
-            
-            return response
-            
+            if format_type == 'xlsx':
+                # Create Excel template
+                import openpyxl
+                from openpyxl import Workbook
+                
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Customer Import Template"
+                
+                # Define headers
+                headers = [
+                    'first_name', 'last_name', 'email', 'phone', 'customer_type',
+                    'address', 'city', 'state', 'country', 'postal_code',
+                    'date_of_birth', 'anniversary_date', 'preferred_metal', 'preferred_stone',
+                    'ring_size', 'budget_range', 'lead_source', 'notes', 'community',
+                    'mother_tongue', 'reason_for_visit', 'age_of_end_user', 'saving_scheme',
+                    'catchment_area', 'next_follow_up', 'summary_notes', 'status', 'tags'
+                ]
+                
+                # Write headers
+                for col, header in enumerate(headers, 1):
+                    ws.cell(row=1, column=col, value=header)
+                
+                # Add example row
+                example_data = [
+                    'John', 'Doe', 'john.doe@example.com', '+1234567890', 'individual',
+                    '123 Main St', 'New York', 'NY', 'USA', '10001',
+                    '1990-01-01', '2015-06-15', 'Gold', 'Diamond',
+                    '7', '1000-5000', 'website', 'Interested in engagement rings', 'General',
+                    'English', 'Engagement Ring', '25-35', 'Monthly',
+                    'Downtown', 'Call next week', 'High potential customer', 'lead', 'High Value, Engagement, Gold'
+                ]
+                
+                for col, value in enumerate(example_data, 1):
+                    ws.cell(row=2, column=col, value=value)
+                
+                # Create response
+                response = HttpResponse(
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                response['Content-Disposition'] = 'attachment; filename="customer_import_template.xlsx"'
+                
+                wb.save(response)
+                return response
+                
+            else:
+                # Default to CSV template
+                response = HttpResponse(content_type='text/csv')
+                response['Content-Disposition'] = 'attachment; filename="customer_import_template.csv"'
+                
+                # Define CSV fields
+                fieldnames = [
+                    'first_name', 'last_name', 'email', 'phone', 'customer_type',
+                    'address', 'city', 'state', 'country', 'postal_code',
+                    'date_of_birth', 'anniversary_date', 'preferred_metal', 'preferred_stone',
+                    'ring_size', 'budget_range', 'lead_source', 'notes', 'community',
+                    'mother_tongue', 'reason_for_visit', 'age_of_end_user', 'saving_scheme',
+                    'catchment_area', 'next_follow_up', 'summary_notes', 'status', 'tags'
+                ]
+                
+                writer = csv.DictWriter(response, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                # Add example row
+                example_row = {
+                    'first_name': 'John',
+                    'last_name': 'Doe',
+                    'email': 'john.doe@example.com',
+                    'phone': '+1234567890',
+                    'customer_type': 'individual',
+                    'address': '123 Main St',
+                    'city': 'New York',
+                    'state': 'NY',
+                    'country': 'USA',
+                    'postal_code': '10001',
+                    'date_of_birth': '1990-01-01',
+                    'anniversary_date': '2015-06-15',
+                    'preferred_metal': 'Gold',
+                    'preferred_stone': 'Diamond',
+                    'ring_size': '7',
+                    'budget_range': '1000-5000',
+                    'lead_source': 'website',
+                    'notes': 'Interested in engagement rings',
+                    'community': 'General',
+                    'mother_tongue': 'English',
+                    'reason_for_visit': 'Engagement Ring',
+                    'age_of_end_user': '25-35',
+                    'saving_scheme': 'Monthly',
+                    'catchment_area': 'Downtown',
+                    'next_follow_up': 'Call next week',
+                    'summary_notes': 'High potential customer',
+                    'status': 'lead',
+                    'tags': 'High Value, Engagement, Gold'
+                }
+                writer.writerow(example_row)
+                
+                return response
+                
         except Exception as e:
             return Response(
                 {'error': f'Template download failed: {str(e)}'}, 
@@ -1027,39 +1326,88 @@ class AppointmentViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
             from apps.notifications.models import Notification
             from apps.users.models import User
             
+            print(f"=== CREATING APPOINTMENT NOTIFICATIONS ===")
+            print(f"Appointment: {appointment.id}")
+            print(f"Client: {appointment.client.first_name if appointment.client else 'No client'} {appointment.client.last_name if appointment.client else ''}")
+            print(f"Client store: {appointment.client.store.name if appointment.client and appointment.client.store else 'No store'}")
+            print(f"Created by user: {created_by_user.username} (role: {created_by_user.role})")
+            print(f"Created by user tenant: {created_by_user.tenant}")
+            
             # Get users to notify
             users_to_notify = []
             
             # The user who created the appointment should get notified
             users_to_notify.append(created_by_user)
+            print(f"Added creator: {created_by_user.username}")
             
             # Notify the assigned user (if different from creator)
             if appointment.assigned_to and appointment.assigned_to != created_by_user:
                 users_to_notify.append(appointment.assigned_to)
+                print(f"Added assigned user: {appointment.assigned_to.username}")
             
             # Notify business admin
             if created_by_user.tenant:
                 business_admins = User.objects.filter(
                     tenant=created_by_user.tenant,
-                    role='business_admin'
+                    role='business_admin',
+                    is_active=True
                 )
+                print(f"Found {business_admins.count()} business admins: {[f'{admin.username} (active: {admin.is_active})' for admin in business_admins]}")
                 users_to_notify.extend(business_admins)
             
-            # Notify store manager if appointment is for their store
+            # Notify store users if appointment is for their store
             if appointment.client and appointment.client.store:
+                print(f"Appointment has client with store: {appointment.client.store.name}")
+                
+                # Store manager
                 store_managers = User.objects.filter(
                     tenant=created_by_user.tenant,
                     role='manager',
-                    store=appointment.client.store
+                    store=appointment.client.store,
+                    is_active=True
                 )
+                print(f"Found {store_managers.count()} store managers: {[f'{manager.username} (store: {manager.store.name if manager.store else 'None'})' for manager in store_managers]}")
                 users_to_notify.extend(store_managers)
+                
+                # In-house sales users
+                inhouse_sales_users = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='inhouse_sales',
+                    store=appointment.client.store,
+                    is_active=True
+                )
+                print(f"Found {inhouse_sales_users.count()} inhouse sales users: {[f'{user.username} (store: {user.store.name if user.store else 'None'})' for user in inhouse_sales_users]}")
+                users_to_notify.extend(inhouse_sales_users)
+                
+                # Tele-calling users
+                telecalling_users = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='tele_calling',
+                    store=appointment.client.store,
+                    is_active=True
+                )
+                print(f"Found {telecalling_users.count()} telecalling users: {[f'{user.username} (store: {user.store.name if user.store else 'None'})' for user in telecalling_users]}")
+                users_to_notify.extend(telecalling_users)
+            else:
+                print(f"Appointment has NO client or store - store users won't be notified")
+                
+                # If appointment has no client/store, notify all managers in the tenant
+                all_managers = User.objects.filter(
+                    tenant=created_by_user.tenant,
+                    role='manager',
+                    is_active=True
+                )
+                print(f"Found {all_managers.count()} managers in tenant (no store): {[f'{manager.username} (store: {manager.store.name if manager.store else 'None'})' for manager in all_managers]}")
+                users_to_notify.extend(all_managers)
             
             # Remove duplicates
             unique_users = list({user.id: user for user in users_to_notify}.values())
+            print(f"Total users to notify (before deduplication): {len(users_to_notify)}")
+            print(f"Unique users to notify (after deduplication): {len(unique_users)}")
             
             # Create notifications
             for user in unique_users:
-                Notification.objects.create(
+                notification = Notification.objects.create(
                     user=user,
                     tenant=appointment.tenant,
                     store=appointment.client.store if appointment.client else None,
@@ -1072,11 +1420,15 @@ class AppointmentViewSet(viewsets.ModelViewSet, ScopedVisibilityMixin):
                     action_text='View Appointment',
                     is_persistent=False
                 )
+                print(f"Created notification {notification.id} for user {user.username} (role: {user.role})")
             
             print(f"Created {len(unique_users)} notifications for new appointment")
+            print(f"Users notified: {[f'{user.username} ({user.role})' for user in unique_users]}")
             
         except Exception as e:
             print(f"Error creating appointment notification: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
 
     def perform_update(self, serializer):
         user = self.request.user

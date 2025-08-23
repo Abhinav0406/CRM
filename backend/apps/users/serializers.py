@@ -7,18 +7,23 @@ from apps.stores.models import Store
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for User model.
+    Enhanced for business admin and manager oversight.
     """
     store_name = serializers.SerializerMethodField()
     tenant_name = serializers.SerializerMethodField()
     store = serializers.PrimaryKeyRelatedField(read_only=True)
+    full_name = serializers.SerializerMethodField()
+    role_display = serializers.SerializerMethodField()
+    is_online = serializers.SerializerMethodField()
+    last_activity = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'email', 'first_name', 'last_name', 'role',
+            'id', 'username', 'email', 'first_name', 'last_name', 'role', 'role_display',
             'phone', 'address', 'profile_picture', 'tenant', 'is_active',
             'created_at', 'updated_at', 'last_login',
-            'store', 'store_name', 'tenant_name',
+            'store', 'store_name', 'tenant_name', 'full_name', 'is_online', 'last_activity'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'last_login']
 
@@ -27,6 +32,24 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_tenant_name(self, obj):
         return obj.tenant.name if obj.tenant else None
+    
+    def get_full_name(self, obj):
+        return obj.get_full_name() or obj.username
+    
+    def get_role_display(self, obj):
+        return obj.get_role_display()
+    
+    def get_is_online(self, obj):
+        """Check if user is currently online (active within last 15 minutes)"""
+        if not obj.last_login:
+            return False
+        from django.utils import timezone
+        from datetime import timedelta
+        return obj.last_login > (timezone.now() - timedelta(minutes=15))
+    
+    def get_last_activity(self, obj):
+        """Get the last activity timestamp"""
+        return obj.last_login
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

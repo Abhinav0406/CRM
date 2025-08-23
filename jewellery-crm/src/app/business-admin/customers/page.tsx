@@ -6,14 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Search, Download, Upload, Plus, Filter, MoreHorizontal, Eye, Edit, Trash2, UserPlus, Calendar, MessageSquare, Phone } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Search, Download, Upload, Plus, Filter, MoreHorizontal, Eye, Trash2 } from 'lucide-react';
 import { apiService, Client } from '@/lib/api-service';
 import { useAuth } from '@/hooks/useAuth';
 import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
 import { ImportModal } from '@/components/customers/ImportModal';
 import { ExportModal } from '@/components/customers/ExportModal';
-import { EditCustomerModal } from '@/components/customers/EditCustomerModal';
 import { CustomerDetailModal } from '@/components/customers/CustomerDetailModal';
 
 export default function CustomersPage() {
@@ -25,8 +24,6 @@ export default function CustomersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -120,11 +117,6 @@ export default function CustomersPage() {
     setShowDetailModal(true);
   };
 
-  const handleEditCustomer = (client: Client) => {
-    setSelectedCustomer(client);
-    setShowEditModal(true);
-  };
-
   const handleDeleteCustomer = async (client: Client) => {
     if (confirm(`Are you sure you want to delete ${client.first_name} ${client.last_name}?`)) {
       try {
@@ -135,36 +127,13 @@ export default function CustomersPage() {
         
         // Handle specific permission errors
         if (error.message && error.message.includes('House sales persons cannot delete customers')) {
-          alert('You do not have permission to delete customers. Only managers can delete customers. Please contact your store manager.');
+          alert('You do not have permission to delete customers. Only managers can delete customers. Please contact your administrator.');
         } else if (error.message && error.message.includes('You do not have permission to delete this customer')) {
           alert('You do not have permission to delete this customer. You can only delete customers from your own store.');
         } else {
           alert('Failed to delete customer. Please try again.');
         }
       }
-    }
-  };
-
-  const handleAssignCustomer = (client: Client) => {
-    console.log('Assign customer:', client);
-    // TODO: Implement assign functionality
-  };
-
-  const handleScheduleAppointment = (client: Client) => {
-    // Navigate to appointment scheduling
-    window.location.href = `/business-admin/appointments/new?customer=${client.id}`;
-  };
-
-  const handleSendMessage = (client: Client) => {
-    console.log('Send message to:', client);
-    // TODO: Implement messaging functionality
-  };
-
-  const handleCallCustomer = (client: Client) => {
-    if (client.phone && client.phone.trim()) {
-      window.open(`tel:${client.phone}`, '_blank');
-    } else {
-      alert('No phone number available for this customer');
     }
   };
 
@@ -380,39 +349,14 @@ export default function CustomersPage() {
                               <Eye className="w-4 h-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditCustomer(client)}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit Customer
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleScheduleAppointment(client)}>
-                              <Calendar className="w-4 h-4 mr-2" />
-                              Schedule Appointment
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleSendMessage(client)}>
-                              <MessageSquare className="w-4 h-4 mr-2" />
-                              Send Message
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleCallCustomer(client)}>
-                              <Phone className="w-4 h-4 mr-2" />
-                              Call Customer
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleAssignCustomer(client)}>
-                              <UserPlus className="w-4 h-4 mr-2" />
-                              Assign to Team Member
-                            </DropdownMenuItem>
                             {canDeleteCustomers && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => handleDeleteCustomer(client)}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Delete Customer
-                                </DropdownMenuItem>
-                              </>
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteCustomer(client)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Customer
+                              </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -448,29 +392,6 @@ export default function CustomersPage() {
         onSuccess={handleExportSuccess}
       />
 
-      {/* Edit Customer Modal */}
-      <EditCustomerModal
-        open={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          setSelectedCustomer(null);
-        }}
-        customer={selectedCustomer}
-        onCustomerUpdated={() => {
-          fetchClients(); // Refresh the list
-          // If we have a customer detail modal open, refresh its data too
-          if (selectedCustomerId) {
-            // Force refresh of customer detail data
-            const event = new CustomEvent('refreshCustomerDetails', { 
-              detail: { customerId: selectedCustomerId } 
-            });
-            window.dispatchEvent(event);
-          }
-          setShowEditModal(false);
-          setSelectedCustomer(null);
-        }}
-      />
-
       {/* Customer Detail Modal */}
       <CustomerDetailModal
         open={showDetailModal}
@@ -480,9 +401,8 @@ export default function CustomersPage() {
         }}
         customerId={selectedCustomerId}
         onEdit={(customer) => {
-          setSelectedCustomer(customer);
+          // Edit functionality removed - just close the detail modal
           setShowDetailModal(false);
-          setShowEditModal(true);
         }}
         onDelete={(customerId) => {
           const customerToDelete = clients.find(c => c.id.toString() === customerId);

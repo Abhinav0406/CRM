@@ -84,17 +84,27 @@ export function EditCustomerModal({ open, onClose, customer, onCustomerUpdated }
       // Reset pipeline creation flag for new customer
       setPipelineCreated(false);
       
-      // Format dates properly for input fields
-      const formatDateForInput = (dateString: string | null | undefined) => {
-        if (!dateString) return "";
-        try {
-          const date = new Date(dateString);
-          if (isNaN(date.getTime())) return "";
-          return date.toISOString().split('T')[0];
-        } catch {
-          return "";
-        }
-      };
+             // Format dates properly for input fields - extract only the date part
+       const formatDateForInput = (dateString: string | null | undefined) => {
+         if (!dateString) return "";
+         try {
+           // If the date string contains time (like "4 October 2004 at 05:30 am"), extract just the date
+           if (dateString.includes(' at ')) {
+             // Extract the date part before " at "
+             const datePart = dateString.split(' at ')[0];
+             const date = new Date(datePart);
+             if (isNaN(date.getTime())) return "";
+             return date.toISOString().split('T')[0];
+           } else {
+             // Regular date string, parse normally
+             const date = new Date(dateString);
+             if (isNaN(date.getTime())) return "";
+             return date.toISOString().split('T')[0];
+           }
+         } catch {
+           return "";
+         }
+       };
 
       setFormData({
         first_name: customer.first_name || "",
@@ -319,7 +329,8 @@ export function EditCustomerModal({ open, onClose, customer, onCustomerUpdated }
     
     // Determine overall stage and probability based on all interests
     const hasDesignSelected = allInterests.some(interest => interest.preferences?.designSelected);
-    const stage = hasDesignSelected ? 'closed_won' : 'exhibition';
+    // Default to store_walkin for customers from store, not exhibition
+    const stage = hasDesignSelected ? 'closed_won' : 'store_walkin';
     const probability = hasDesignSelected ? 100 : 50;
     
     // Create consolidated notes with all interests
@@ -1135,7 +1146,7 @@ export function EditCustomerModal({ open, onClose, customer, onCustomerUpdated }
                         <span className="font-medium">Probability:</span> {opportunity.probability}%
                       </div>
                       <div className="text-sm text-gray-600">
-                        <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : 'Exhibition'}
+                        <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : opportunity.stage === 'store_walkin' ? 'Store Walkin' : 'Exhibition'}
                       </div>
                       <div className="text-sm text-gray-600">
                         <span className="font-medium">Next Action:</span> {opportunity.next_action}

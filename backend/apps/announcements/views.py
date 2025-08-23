@@ -53,7 +53,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             ).distinct()
         else:
             # If user has no store, show all announcements for the tenant
-            print(f"User {user.username} has no store assigned, showing all tenant announcements")
+            pass
         
         # Filter by publish date and expiration
         now = timezone.now()
@@ -62,12 +62,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
             (Q(expires_at__isnull=True) | Q(expires_at__gt=now))
         )
         
-        # Debug: Print the final queryset count
-        print(f"Final announcements count for user {user.username}: {queryset.count()}")
-        
-        # Debug: Print the actual announcements being returned
-        for ann in queryset:
-            print(f"  - {ann.title} (Type: {ann.announcement_type}, Author: {ann.author.username})")
+
         
         return queryset.distinct()
 

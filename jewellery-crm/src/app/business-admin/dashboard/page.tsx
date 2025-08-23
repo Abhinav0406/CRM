@@ -711,6 +711,41 @@ export default function BusinessAdminDashboard() {
         </CardContent>
       </Card>
 
+      {/* Sales Team Overview */}
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Sales Team Overview
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">
+                {dashboardData.top_salesmen.length}
+              </div>
+              <div className="text-xs text-blue-600">Team Members</div>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {formatCurrency(dashboardData.top_salesmen.reduce((sum, s) => sum + s.revenue, 0))}
+              </div>
+              <div className="text-xs text-green-600">Total Revenue</div>
+            </div>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            onClick={() => router.push('/business-admin/sales-team')}
+          >
+            <Users className="w-4 h-4 mr-2" />
+            View Full Team
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Bottom Section - Top Performers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Performing Managers */}
@@ -728,7 +763,7 @@ export default function BusinessAdminDashboard() {
                   <div 
                     key={manager.id} 
                     className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => handleManagerCardClick(manager.id)}
+                    onClick={() => router.push(`/business-admin/sales-team`)}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -778,7 +813,7 @@ export default function BusinessAdminDashboard() {
                   <div 
                     key={salesman.id} 
                     className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => handleSalesmanCardClick(salesman.id)}
+                    onClick={() => router.push(`/business-admin/sales-team`)}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">

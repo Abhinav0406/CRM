@@ -19,14 +19,6 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
   const { user, isAuthenticated } = useAuth();
   const [activeToasts, setActiveToasts] = useState<Notification[]>([]);
 
-  // Don't show notifications if user is not authenticated
-  if (!isAuthenticated || !user) {
-    return null;
-  }
-
-  // Disable toast notifications - only show in bell dropdown
-  return null;
-
   // Filter notifications based on user role and store access
   const getScopedNotifications = (notifications: Notification[]) => {
     if (!user) return [];
@@ -36,27 +28,30 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
       return notifications;
     }
 
-    // Store manager and sales team can only see their store's notifications
-    if (user.role === 'store_manager' || user.role === 'sales_team') {
+    // Store manager and inhouse sales can only see their store's notifications
+    if (user.role === 'manager' || user.role === 'inhouse_sales') {
       return notifications.filter(notification => 
         notification.tenantId === user.tenant?.toString() &&
         (!notification.storeId || notification.storeId === user.store?.toString())
       );
     }
 
-    // Telecaller can only see their assigned notifications
-    if (user.role === 'telecaller') {
+    // Tele-calling users can see their store's notifications and their own
+    if (user.role === 'tele_calling') {
       return notifications.filter(notification => 
         notification.userId === user.id.toString() ||
-        notification.tenantId === user.tenant?.toString()
+        (notification.tenantId === user.tenant?.toString() &&
+         (!notification.storeId || notification.storeId === user.store?.toString()))
       );
     }
 
-    // Marketing team can see marketing-related notifications
-    if (user.role === 'marketing_team') {
+    // Marketing users can see marketing-related notifications and their store's notifications
+    if (user.role === 'marketing') {
       return notifications.filter(notification => 
         notification.type === 'marketing_campaign' ||
-        notification.type === 'announcement'
+        notification.type === 'announcement' ||
+        (notification.tenantId === user.tenant?.toString() &&
+         (!notification.storeId || notification.storeId === user.store?.toString()))
       );
     }
 
@@ -68,6 +63,11 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
 
   // Handle new notifications and show them as toasts
   useEffect(() => {
+    // Don't show notifications if user is not authenticated
+    if (!isAuthenticated || !user) {
+      return;
+    }
+
     // Get scoped notifications that are unread and not already in active toasts
     const scopedNotifications = getScopedNotifications(state.notifications);
     const newNotifications = scopedNotifications.filter(
@@ -84,10 +84,15 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
         return updated.slice(-maxToasts);
       });
     }
-  }, [state.notifications, maxToasts, user]);
+  }, [state.notifications, maxToasts, user, isAuthenticated, activeToasts]);
 
   // Remove notifications from active toasts if they're no longer unread
   useEffect(() => {
+    // Don't process if user is not authenticated
+    if (!isAuthenticated || !user) {
+      return;
+    }
+
     const scopedNotifications = getScopedNotifications(state.notifications);
     setActiveToasts(prev => 
       prev.filter(toast => {
@@ -95,7 +100,7 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
         return currentNotification && currentNotification.status === 'unread';
       })
     );
-  }, [state.notifications, user]);
+  }, [state.notifications, user, isAuthenticated]);
 
   // Clear active toasts when component unmounts or when notifications are refreshed
   useEffect(() => {
@@ -106,6 +111,11 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
 
   // Add keyboard shortcut to dismiss all notifications (Escape key)
   useEffect(() => {
+    // Don't add event listener if user is not authenticated
+    if (!isAuthenticated || !user) {
+      return;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && activeToasts.length > 0) {
         dismissAllToasts();
@@ -116,7 +126,15 @@ export const NotificationManager: React.FC<NotificationManagerProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeToasts.length]);
+  }, [activeToasts.length, isAuthenticated, user]);
+
+  // Don't show notifications if user is not authenticated
+  if (!isAuthenticated || !user) {
+    return null;
+  }
+
+  // Enable toast notifications - show them in bell dropdown
+  // return null; // This was disabling notifications
 
   const handleToastClose = async (notificationId: string) => {
     // Remove from active toasts immediately

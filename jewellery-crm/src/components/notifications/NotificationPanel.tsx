@@ -71,6 +71,31 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.5);
 
+  // Debug logging
+  console.log('🔔 NotificationPanel render:', {
+    user: user?.username,
+    role: user?.role,
+    tenant: user?.tenant,
+    store: user?.store,
+    isAuthenticated,
+    isHydrated,
+    totalNotifications: state.notifications.length,
+    unreadCount: state.unreadCount,
+    isLoading: state.isLoading,
+    error: state.error
+  });
+
+  // Debug function to manually fetch notifications
+  const handleDebugFetch = async () => {
+    console.log('🔧 Manual debug fetch triggered');
+    try {
+      await actions.fetchNotifications();
+      console.log('🔧 Manual fetch completed');
+    } catch (error) {
+      console.error('🔧 Manual fetch failed:', error);
+    }
+  };
+
   // Initialize volume from notification sound
   useEffect(() => {
     setVolume(notificationSound.getVolume());
@@ -78,48 +103,68 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
 
   // Filter notifications based on user role and store access
   const getScopedNotifications = (notifications: Notification[]) => {
+    console.log('🔍 getScopedNotifications called with:', {
+      totalNotifications: notifications.length,
+      userRole: user?.role,
+      userTenant: user?.tenant,
+      userStore: user?.store
+    });
+
     if (!user) return [];
 
     // Business admin can see all notifications
     if (user.role === 'business_admin') {
+      console.log('👑 Business admin - showing all notifications');
       return notifications;
     }
 
     // Manager can see their store's notifications
     if (user.role === 'manager') {
-      return notifications.filter(notification => 
+      const filtered = notifications.filter(notification => 
         notification.tenantId === user.tenant?.toString() &&
         (!notification.storeId || notification.storeId === user.store?.toString())
       );
+      console.log('👔 Manager - filtered to:', filtered.length, 'notifications');
+      return filtered;
     }
 
-    // Inhouse sales can see their own notifications
+    // Inhouse sales can see their store's notifications and their own
     if (user.role === 'inhouse_sales') {
-      return notifications.filter(notification => 
-        notification.userId === user.id.toString()
+      const filtered = notifications.filter(notification => 
+        notification.userId === user.id.toString() ||
+        (notification.tenantId === user.tenant?.toString() &&
+         (!notification.storeId || notification.storeId === user.store?.toString()))
       );
+      console.log('💼 Inhouse sales - filtered to:', filtered.length, 'notifications');
+      return filtered;
     }
 
     // Telecaller can see their assigned notifications
     if (user.role === 'tele_calling') {
-      return notifications.filter(notification => 
+      const filtered = notifications.filter(notification => 
         notification.userId === user.id.toString() ||
         notification.tenantId === user.tenant?.toString()
       );
+      console.log('📞 Telecaller - filtered to:', filtered.length, 'notifications');
+      return filtered;
     }
 
     // Marketing team can see marketing-related notifications
     if (user.role === 'marketing') {
-      return notifications.filter(notification => 
+      const filtered = notifications.filter(notification => 
         notification.type === 'marketing_campaign' ||
         notification.type === 'announcement'
       );
+      console.log('📢 Marketing - filtered to:', filtered.length, 'notifications');
+      return filtered;
     }
 
     // Default: only show user's own notifications
-    return notifications.filter(notification => 
+    const filtered = notifications.filter(notification => 
       notification.userId === user.id.toString()
     );
+    console.log('🔒 Default - showing only own notifications:', filtered.length);
+    return filtered;
   };
 
   // Don't render if user is not authenticated
@@ -318,51 +363,50 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
       className="absolute top-full right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
-          {unreadCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
-              {unreadCount} new
-            </Badge>
-          )}
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center space-x-3">
+          <Bell className="w-5 h-5 text-primary" />
+          <div>
+            <h3 className="text-lg font-semibold">Notifications</h3>
+            <p className="text-sm text-muted-foreground">
+              {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+            </p>
+          </div>
         </div>
         
-        <div className="flex items-center gap-1">
+        {/* Debug button - only show in development */}
+        {process.env.NODE_ENV === 'development' && (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-8 w-8 p-0"
-            onClick={handleToggleMute}
-            title={isMuted ? "Unmute notifications" : "Mute notifications"}
+            onClick={handleDebugFetch}
+            className="text-xs"
           >
-            {isMuted ? (
-              <VolumeX className="h-4 w-4 text-gray-400" />
-            ) : (
-              <Volume2 className="h-4 w-4 text-green-500" />
-            )}
+            🔧 Debug Fetch
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={handleRefresh}
-            disabled={state.isLoading}
-            title="Refresh notifications"
-          >
-            <RefreshCw className={`h-4 w-4 ${state.isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={onClose}
-            title="Close"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        )}
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="h-8 w-8 p-0"
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
+
+      {/* Debug Status - only show in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="p-3 bg-gray-50 border-b text-xs">
+          <div className="font-mono">
+            <div>🔍 Status: {state.isLoading ? 'Loading...' : state.error ? 'Error' : 'Ready'}</div>
+            <div>📊 Total: {state.notifications.length} | Unread: {state.unreadCount}</div>
+            <div>👤 User: {user?.username} | Role: {user?.role}</div>
+            <div>🏢 Tenant: {user?.tenant} | Store: {user?.store}</div>
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       {scopedNotifications.length > 0 && (
@@ -424,7 +468,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
         </div>
       )}
 
-      {/* Notifications list */}
+      {/* Notifications List */}
       <ScrollArea className="max-h-80 overflow-y-auto">
         {state.isLoading ? (
           <div className="flex items-center justify-center p-8">

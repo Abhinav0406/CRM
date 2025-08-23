@@ -5,6 +5,31 @@ from .models import (
     Announcement, CustomerTag, AuditLog, Purchase, CustomerInterest
 )
 
+
+class ExhibitionLeadFilter(admin.SimpleListFilter):
+    """Filter to show only exhibition leads"""
+    title = 'Exhibition Leads'
+    parameter_name = 'exhibition_only'
+    
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', 'Show Exhibition Leads Only'),
+            ('no', 'Hide Exhibition Leads'),
+        )
+    
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(
+                models.Q(status='exhibition') | 
+                models.Q(lead_source='exhibition')
+            )
+        elif self.value() == 'no':
+            return queryset.exclude(
+                models.Q(status='exhibition') | 
+                models.Q(lead_source='exhibition')
+            )
+        return queryset
+
 class CustomerInterestInline(admin.TabularInline):
     model = CustomerInterest
     extra = 1
@@ -59,9 +84,10 @@ class CustomerInterestInline(admin.TabularInline):
 class ClientAdmin(admin.ModelAdmin):
     list_display = [
         'full_name', 'email', 'phone', 'status', 'lead_source', 'catchment_area', 
-        'assigned_to', 'store', 'tenant', 'created_at', 'customer_interests_summary'
+        'assigned_to', 'store', 'tenant', 'created_at', 'customer_interests_summary', 'exhibition_status'
     ]
     list_filter = [
+        ExhibitionLeadFilter,
         'status', 'lead_source', 'customer_type', 'saving_scheme', 'store', 'tenant', 
         'created_at', 'is_deleted'
     ]
@@ -102,7 +128,7 @@ class ClientAdmin(admin.ModelAdmin):
     
     actions = [
         'mark_as_lead', 'mark_as_prospect', 'mark_as_customer', 'mark_as_inactive',
-        'update_status_automatically'
+        'update_status_automatically', 'mark_as_exhibition_lead'
     ]
     
     def mark_as_lead(self, request, queryset):
@@ -138,6 +164,11 @@ class ClientAdmin(admin.ModelAdmin):
             f'Automatically updated status for {updated_count} customers based on their behavior'
         )
     update_status_automatically.short_description = "Update status automatically based on behavior"
+    
+    def mark_as_exhibition_lead(self, request, queryset):
+        updated = queryset.update(status='exhibition', lead_source='exhibition')
+        self.message_user(request, f'{updated} customers marked as Exhibition Lead')
+    mark_as_exhibition_lead.short_description = "Mark selected customers as Exhibition Lead"
     
     def save_model(self, request, obj, form, change):
         """Override to ensure tenant is set and propagate to interests"""
@@ -193,6 +224,20 @@ class ClientAdmin(admin.ModelAdmin):
         print(f"Returning summary: {result}")
         return result
     customer_interests_summary.short_description = "Interests"
+
+    def exhibition_status(self, obj):
+        """Display exhibition status with color coding"""
+        if obj.lead_source == 'exhibition' or obj.status == 'exhibition':
+            if obj.status == 'exhibition':
+                return format_html('<span style="color: orange; font-weight: bold;">🎯 Exhibition Lead</span>')
+            elif obj.status == 'lead':
+                return format_html('<span style="color: green; font-weight: bold;">✅ Promoted to Lead</span>')
+            else:
+                return format_html('<span style="color: blue; font-weight: bold;">🔄 {}</span>', obj.status.title())
+        return "—"
+    
+    exhibition_status.short_description = "Exhibition Status"
+    exhibition_status.allow_tags = True
 
 @admin.register(Purchase)
 class PurchaseAdmin(admin.ModelAdmin):

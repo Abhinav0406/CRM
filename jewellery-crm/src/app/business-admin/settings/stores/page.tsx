@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Save, Plus, Loader2, MoreHorizontal } from 'lucide-react';
+import { Edit, Save, Plus, Loader2, MoreHorizontal, Trash2, Users } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
 import { 
   DropdownMenu,
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import AddStoreModal from '@/components/stores/AddStoreModal';
+import StoreTeamModal from '@/components/stores/StoreTeamModal';
 
 interface Store {
   id: number;
@@ -35,6 +36,8 @@ export default function StoreSettingsPage() {
   const [editingStore, setEditingStore] = useState<number | null>(null);
   const [editData, setEditData] = useState<Partial<Store>>({});
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [selectedStoreForTeam, setSelectedStoreForTeam] = useState<Store | null>(null);
 
   useEffect(() => {
     fetchStores();
@@ -95,6 +98,67 @@ export default function StoreSettingsPage() {
 
   const handleAddStoreSuccess = () => {
     fetchStores(); // Refresh the stores list
+  };
+
+  const handleDelete = async (store: Store) => {
+    // Prevent deletion of the main store (usually the first store or one with specific code)
+    if (store.code === 'MJ001' || store.name.toLowerCase().includes('main store')) {
+      alert('Cannot delete the main store. This is your primary business location.');
+      return;
+    }
+
+    // Check if store is active and has potential dependencies
+    if (store.is_active) {
+      const confirmActive = window.confirm(
+        `Warning: "${store.name}" is currently active. Deleting an active store may affect ongoing operations. Are you sure you want to continue?`
+      );
+      if (!confirmActive) return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${store.name}"?\n\nThis will permanently remove:\n• Store location and details\n• Associated staff assignments\n• Store-specific settings\n\nThis action cannot be undone.`
+    );
+    
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      const response = await apiService.deleteStore(store.id.toString());
+      if (response.success) {
+        console.log('Store deleted successfully');
+        // Remove the deleted store from the local state
+        setStores(prevStores => prevStores.filter(s => s.id !== store.id));
+        // Show success message
+        alert('Store deleted successfully!');
+      } else {
+        console.error('Failed to delete store:', response);
+        alert('Failed to delete store. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Error deleting store:', error);
+      
+      // Handle specific error messages
+      if (error.message && error.message.includes('cannot delete')) {
+        alert(error.message);
+      } else if (error.message && error.message.includes('permission')) {
+        alert('You do not have permission to delete this store. Please contact your administrator.');
+      } else if (error.message && error.message.includes('dependencies')) {
+        alert('Cannot delete this store because it has active customers, staff, or other dependencies. Please reassign or deactivate them first.');
+      } else {
+        alert('Failed to delete store. Please try again.');
+      }
+    }
+  };
+
+  const handleManageTeam = (store: Store) => {
+    setSelectedStoreForTeam(store);
+    setIsTeamModalOpen(true);
+  };
+
+  const handleTeamModalClose = () => {
+    setIsTeamModalOpen(false);
+    setSelectedStoreForTeam(null);
   };
 
   const getStatusBadge = (isActive: boolean) => {
@@ -270,11 +334,15 @@ export default function StoreSettingsPage() {
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="mr-2 h-4 w-4" />
+                            <DropdownMenuItem onClick={() => handleManageTeam(store)}>
+                              <Users className="mr-2 h-4 w-4" />
                               Manage Team
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={() => handleDelete(store)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -293,6 +361,12 @@ export default function StoreSettingsPage() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={handleAddStoreSuccess}
+      />
+
+      <StoreTeamModal
+        isOpen={isTeamModalOpen}
+        onClose={handleTeamModalClose}
+        store={selectedStoreForTeam}
       />
     </div>
   );

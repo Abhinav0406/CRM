@@ -489,6 +489,29 @@ class ApiService {
     }
   }
 
+  // Generic HTTP methods
+  async get<T>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET' });
+  }
+
+  async post<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
   // Authentication
   async login(username: string, password: string): Promise<ApiResponse<LoginResponse>> {
     return this.request('/auth/login/', {
@@ -681,6 +704,28 @@ class ApiService {
     const queryParams = new URLSearchParams();
     if (category) queryParams.append('category', category);
     return this.request(`/clients/tags/by_category/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  // Exhibition Lead Management
+  async getExhibitionLeads(): Promise<ApiResponse<Client[]>> {
+    return this.request('/exhibition/exhibition-leads/');
+  }
+
+  async getExhibitionStats(): Promise<ApiResponse<any>> {
+    return this.request('/exhibition/exhibition-leads/stats/');
+  }
+
+  async promoteExhibitionLead(clientId: string): Promise<ApiResponse<any>> {
+    return this.request(`/exhibition/exhibition-leads/${clientId}/promote/`, {
+      method: 'POST',
+    });
+  }
+
+  async bulkPromoteExhibitionLeads(clientIds: number[]): Promise<ApiResponse<any>> {
+    return this.request('/exhibition/exhibition-leads/bulk_promote/', {
+      method: 'POST',
+      body: JSON.stringify({ client_ids: clientIds }),
+    });
   }
 
   // Products
@@ -1308,6 +1353,17 @@ class ApiService {
     });
   }
 
+  async getStoreTeam(storeId: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/stores/${storeId}/team/`);
+  }
+
+  async assignStoreTeam(storeId: string, assignments: any[]): Promise<ApiResponse<void>> {
+    return this.request(`/stores/${storeId}/assign-team/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assignments }),
+    });
+  }
+
   // Integrations
   async getIntegrations(): Promise<ApiResponse<any[]>> {
     return this.request('/integrations/');
@@ -1357,7 +1413,7 @@ class ApiService {
 
   // Customer Import/Export
   async importCustomers(formData: FormData): Promise<ApiResponse<any>> {
-    return this.request('/clients/clients/import_csv/', {
+    return this.request('/clients/clients/import/', {
       method: 'POST',
       body: formData,
       headers: {
@@ -1374,14 +1430,14 @@ class ApiService {
     let endpoint: string;
     switch (params.format) {
       case 'csv':
-        endpoint = '/clients/clients/export_csv/';
+        endpoint = '/clients/clients/export/csv/';
         break;
       case 'xlsx':
         // Temporarily redirect XLSX to CSV since XLSX is not implemented yet
-        endpoint = '/clients/clients/export_csv/';
+        endpoint = '/clients/clients/export/csv/';
         break;
       default:
-        endpoint = '/clients/clients/export_json/';
+        endpoint = '/clients/clients/export/json/';
     }
 
     // Add fields as query parameter if provided
@@ -1577,7 +1633,7 @@ class ApiService {
     if (params?.type) queryParams.append('type', params.type);
     if (params?.priority) queryParams.append('priority', params.priority);
 
-    return this.request(`/notifications/notifications/${queryParams.toString() ? `?${queryParams}` : ''}`);
+    return this.request(`/notifications/${queryParams.toString() ? `?${queryParams}` : ''}`);
   }
 
   // Mark notification as read
@@ -1714,6 +1770,47 @@ class ApiService {
   // Get WhatsApp templates
   async getWhatsAppTemplates(): Promise<ApiResponse<any[]>> {
     return this.request('/integrations/whatsapp/templates/');
+  }
+
+  // ================================
+  // PURCHASES ENDPOINTS
+  // ================================
+
+  // Get all purchases
+  async getPurchases(): Promise<ApiResponse<any[]>> {
+    return this.request('/clients/purchases/');
+  }
+
+  // Create a new purchase
+  async createPurchase(purchaseData: any): Promise<ApiResponse<any>> {
+    return this.request('/clients/purchases/', {
+      method: 'POST',
+      body: JSON.stringify(purchaseData),
+    });
+  }
+
+  // Update a purchase
+  async updatePurchase(purchaseId: string, purchaseData: any): Promise<ApiResponse<any>> {
+    return this.request(`/clients/purchases/${purchaseId}/`, {
+      method: 'PUT',
+      body: JSON.stringify(purchaseData),
+    });
+  }
+
+  // Delete a purchase
+  async deletePurchase(purchaseId: string): Promise<ApiResponse<void>> {
+    return this.request(`/clients/purchases/${purchaseId}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ================================
+  // SALES PIPELINE ENDPOINTS
+  // ================================
+
+  // Get all sales pipelines (different from existing pipeline methods)
+  async getSalesPipelines(): Promise<ApiResponse<any[]>> {
+    return this.request('/sales/pipeline/');
   }
 }
 

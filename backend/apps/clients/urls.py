@@ -21,8 +21,7 @@ urlpatterns = [
     path('clients/export/csv/', ClientViewSet.as_view({'get': 'export_csv'}), name='client-export-csv'),
     path('clients/export/json/', ClientViewSet.as_view({'get': 'export_json'}), name='client-export-json'),
     # path('clients/export/xlsx/', ClientViewSet.as_view({'get': 'export_xlsx'}), name='client-export-xlsx'),
-    path('clients/import/csv/', ClientViewSet.as_view({'post': 'import_csv'}), name='client-import-csv'),
-    path('clients/import/json/', ClientViewSet.as_view({'post': 'import_json'}), name='client-import-json'),
+    path('clients/import/', ClientViewSet.as_view({'post': 'import_file'}), name='client-import'),
     path('clients/template/download/', ClientViewSet.as_view({'get': 'download_template'}), name='client-download-template'),
     
     path('', include(router.urls)),

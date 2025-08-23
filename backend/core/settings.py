@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.marketing',
     'apps.support',
     'apps.notifications',
+    'apps.exhibition',
     'telecalling',
 ]
 
@@ -66,9 +67,7 @@ MIDDLEWARE = [
     'apps.users.middleware.ScopedVisibilityMiddleware',
 ]
 
-if DEBUG:
-    INSTALLED_APPS.append('debug_toolbar')
-    MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
+# Debug toolbar removed for production
 
 ROOT_URLCONF = 'core.urls'
 
@@ -243,7 +242,7 @@ SPECTACULAR_SETTINGS = {
     'SCHEMA_PATH_PREFIX': '/api/',
 }
 
-# Debug Toolbar
+# Internal IPs for development (if needed)
 INTERNAL_IPS = [
     '127.0.0.1',
 ]
@@ -270,7 +269,7 @@ LOGGING = {
             'formatter': 'verbose',
         },
         'console': {
-            'level': 'DEBUG',
+            'level': 'INFO',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },

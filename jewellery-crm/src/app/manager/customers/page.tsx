@@ -9,13 +9,15 @@ import { AddCustomerModal } from '@/components/customers/AddCustomerModal';
 import { CustomerDetailModal } from '@/components/customers/CustomerDetailModal';
 import { EditCustomerModal } from '@/components/customers/EditCustomerModal';
 import { TrashModal } from '@/components/customers/TrashModal';
+import { ImportModal } from '@/components/customers/ImportModal';
 import { apiService, Client } from '@/lib/api-service';
 import { useAuth } from '@/hooks/useAuth';
-import { Search, Download, Plus, Eye, Edit, Trash2, Archive } from 'lucide-react';
+import { Search, Download, Plus, Eye, Edit, Trash2, Archive, Upload } from 'lucide-react';
 
 export default function ManagerCustomersPage() {
   const { user } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [customers, setCustomers] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -181,6 +183,14 @@ export default function ManagerCustomersPage() {
           fetchCustomers(); // Refresh the list when modal closes
         }}
       />
+      <ImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={() => {
+          setImportModalOpen(false);
+          fetchCustomers(); // Refresh the list after successful import
+        }}
+      />
       <CustomerDetailModal
         open={detailModalOpen}
         onClose={() => setDetailModalOpen(false)}
@@ -221,6 +231,10 @@ export default function ManagerCustomersPage() {
           <Button className="btn-primary" size="sm" onClick={() => setModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Customer
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportModalOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportCustomers('csv')}>
             <Download className="w-4 h-4 mr-2" />

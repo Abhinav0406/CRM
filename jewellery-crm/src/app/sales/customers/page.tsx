@@ -21,6 +21,7 @@ export default function SalesCustomersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [showMyDataOnly, setShowMyDataOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -37,8 +38,13 @@ export default function SalesCustomersPage() {
   }, []);
 
   useEffect(() => {
-    // Filter customers based on search term and status
+    // Filter customers based on search term, status, and my data filter
     let filtered = customers || [];
+    
+    // Apply "My Data" filter first
+    if (showMyDataOnly) {
+      filtered = filtered.filter(customer => customer.created_by?.id === user?.id);
+    }
     
     if (searchTerm) {
       filtered = filtered.filter(customer => 
@@ -54,7 +60,7 @@ export default function SalesCustomersPage() {
     }
     
     setFilteredCustomers(filtered);
-  }, [customers, searchTerm, statusFilter]);
+  }, [customers, searchTerm, statusFilter, showMyDataOnly, user?.id]);
 
   const fetchCustomers = async () => {
     try {
@@ -227,6 +233,30 @@ export default function SalesCustomersPage() {
             <div className="mt-2">
               <ScopeIndicator showDetails={false} />
             </div>
+            {/* Summary stats */}
+            <div className="mt-4 flex gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-text-secondary">Total Customers:</span>
+                <span className="font-semibold text-text-primary">{customers.length}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-text-secondary">My Customers:</span>
+                <span className="font-semibold text-orange-600">
+                  {customers.filter(customer => customer.created_by?.id === user?.id).length}
+                </span>
+              </div>
+            </div>
+            {/* My Data Filter Button */}
+            <div className="mt-3">
+              <Button
+                variant={showMyDataOnly ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowMyDataOnly(!showMyDataOnly)}
+                className={showMyDataOnly ? "bg-orange-600 hover:bg-orange-700" : "border-orange-600 text-orange-600 hover:bg-orange-50"}
+              >
+                {showMyDataOnly ? "Show All Customers" : "My Data"}
+              </Button>
+            </div>
           </div>
           <div className="flex gap-2 items-center">
             <Button 
@@ -287,69 +317,96 @@ export default function SalesCustomersPage() {
                 <th className="px-4 py-3 text-left font-semibold text-text-secondary">Email</th>
                 <th className="px-4 py-3 text-left font-semibold text-text-secondary">Phone</th>
                 <th className="px-4 py-3 text-left font-semibold text-text-secondary">Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Created By</th>
                 <th className="px-4 py-3 text-left font-semibold text-text-secondary">Created</th>
                 <th className="px-4 py-3 text-left font-semibold text-text-secondary">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.length > 0 ? (
-                filteredCustomers.map((customer) => (
-                  <tr key={customer.id} className="border-t border-border hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-text-primary">
-                      {customer.first_name} {customer.last_name}
-                    </td>
-                    <td className="px-4 py-3 text-text-primary">{customer.email}</td>
-                    <td className="px-4 py-3 text-text-primary">{customer.phone || '-'}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={getStatusBadgeVariant(customer.status || '')} className="capitalize text-xs">
-                        {customer.status || 'unknown'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-text-secondary">
-                      {customer.created_at ? formatDate(customer.created_at) : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-blue-600 hover:text-blue-800"
-                          onClick={() => handleViewCustomer(customer.id.toString())}
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-green-600 hover:text-green-800"
-                          onClick={() => handleEditCustomer(customer)}
-                        >
-                          <Edit className="w-4 h-4 mr-1" />
-                          Edit
-                        </Button>
-                        {canDeleteCustomers && (
+                filteredCustomers.map((customer) => {
+                  // Check if this customer belongs to the current user
+                  const isCurrentUserCustomer = customer.created_by?.id === user?.id;
+                  
+                  return (
+                    <tr 
+                      key={customer.id} 
+                      className={`border-t border-border hover:bg-gray-50 ${
+                        isCurrentUserCustomer ? 'bg-orange-50 border-l-4 border-l-orange-500' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-medium text-text-primary">
+                        <div className="flex items-center gap-2">
+                          <span>{customer.first_name} {customer.last_name}</span>
+                          {isCurrentUserCustomer && (
+                            <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200 text-xs">
+                              My Customer
+                            </Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-text-primary">{customer.email}</td>
+                      <td className="px-4 py-3 text-text-primary">{customer.phone || '-'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={getStatusBadgeVariant(customer.status || '')} className="capitalize text-xs">
+                          {customer.status || 'unknown'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-text-secondary">
+                        {customer.created_by ? (
+                          <span className={isCurrentUserCustomer ? 'font-semibold text-orange-600' : ''}>
+                            {customer.created_by.first_name} {customer.created_by.last_name}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-text-secondary">
+                        {customer.created_at ? formatDate(customer.created_at) : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
                           <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="text-red-600 hover:text-red-800"
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to move ${customer.first_name} ${customer.last_name} to trash? You can restore them later from the Trash section.`)) {
-                                handleDeleteCustomer(customer.id.toString());
-                              }
-                            }}
+                            className="text-blue-600 hover:text-blue-800"
+                            onClick={() => handleViewCustomer(customer.id.toString())}
                           >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Move to Trash
+                            <Eye className="w-4 h-4 mr-1" />
+                            View
                           </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-green-600 hover:text-green-800"
+                            onClick={() => handleEditCustomer(customer)}
+                          >
+                            <Edit className="w-4 h-4 mr-1" />
+                            Edit
+                          </Button>
+                          {canDeleteCustomers && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-red-600 hover:text-red-800"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to move ${customer.first_name} ${customer.last_name} to trash? You can restore them later from the Trash section.`)) {
+                                  handleDeleteCustomer(customer.id.toString());
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Move to Trash
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
+                  <td colSpan={7} className="px-4 py-8 text-center text-text-secondary">
                     {customers.length === 0 ? 'No customers found' : 'No customers match your search criteria'}
                   </td>
                 </tr>

@@ -61,6 +61,7 @@ class Client(models.Model):
         PROSPECT = 'prospect', _('Prospect')
         CUSTOMER = 'customer', _('Customer')
         INACTIVE = 'inactive', _('Inactive')
+        EXHIBITION = 'exhibition', _('Exhibition')
 
     class Source(models.TextChoices):
         WEBSITE = 'website', _('Website')
@@ -68,6 +69,7 @@ class Client(models.Model):
         SOCIAL_MEDIA = 'social_media', _('Social Media')
         ADVERTISING = 'advertising', _('Advertising')
         COLD_CALL = 'cold_call', _('Cold Call')
+        EXHIBITION = 'exhibition', _('Exhibition')
         OTHER = 'other', _('Other')
 
     # Basic Information
@@ -412,7 +414,7 @@ class Appointment(models.Model):
 
     def send_reminder(self):
         """Send reminder for this appointment"""
-        # TODO: Implement actual reminder sending logic
+
         self.reminder_sent = True
         self.save(update_fields=['reminder_sent'])
 
@@ -571,7 +573,7 @@ class FollowUp(models.Model):
 
     def send_reminder(self):
         """Send reminder for this follow-up"""
-        # TODO: Implement actual reminder sending logic
+
         self.reminder_sent = True
         self.save(update_fields=['reminder_sent'])
 
@@ -636,11 +638,6 @@ class AuditLog(models.Model):
 
 @receiver(pre_save, sender=Client)
 def log_client_update(sender, instance, **kwargs):
-    print(f"🔍 PRE_SAVE SIGNAL FIRED:")
-    print(f"  - Instance ID: {instance.id if instance.pk else 'NEW'}")
-    print(f"  - _auditlog_user: {getattr(instance, '_auditlog_user', 'NOT SET')}")
-    print(f"  - User type: {type(getattr(instance, '_auditlog_user', None))}")
-    
     if instance.pk:
         try:
             old = Client.objects.get(pk=instance.pk)
@@ -648,10 +645,8 @@ def log_client_update(sender, instance, **kwargs):
         except Client.DoesNotExist:
             before = None
         instance._auditlog_before = before
-        print(f"  - Set _auditlog_before: {before is not None}")
     else:
         instance._auditlog_before = None
-        print(f"  - New instance, no before data")
 
 @receiver(post_save, sender=Client)
 def create_audit_log_on_save(sender, instance, created, **kwargs):
@@ -659,30 +654,16 @@ def create_audit_log_on_save(sender, instance, created, **kwargs):
     before = getattr(instance, '_auditlog_before', None)
     after = {field.name: serialize_field(getattr(instance, field.name)) for field in instance._meta.fields}
     action = 'create' if created else 'update'
-    
-    print(f"🔍 AUDIT LOG SIGNAL FIRED:")
-    print(f"  - Action: {action}")
-    print(f"  - Instance ID: {instance.id}")
-    print(f"  - User from _auditlog_user: {user}")
-    print(f"  - User type: {type(user) if user else 'None'}")
-    print(f"  - Before: {before}")
-    print(f"  - After: {after}")
-    print(f"  - Changes detected: {before != after}")
-    
     if before != after:
         # Import here to avoid circular import
         from .models import AuditLog
-        audit_log = AuditLog.objects.create(
+        AuditLog.objects.create(
             client=instance,
             action=action,
             user=user,
             before=before,
             after=after
         )
-        print(f"✅ Created audit log: {audit_log}")
-        print(f"  - Audit log user: {audit_log.user}")
-    else:
-        print(f"⚠️ No changes detected, skipping audit log")
 
 @receiver(pre_delete, sender=Client)
 def create_audit_log_on_delete(sender, instance, **kwargs):

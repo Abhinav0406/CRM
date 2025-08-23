@@ -10,17 +10,20 @@ class StockTransferNotificationService:
         # Notify business admin
         business_admins = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='business_admin'
+            role='business_admin',
+            is_active=True
         )
         users_to_notify.extend(business_admins)
         
-        # Notify receiving store manager
-        receiving_store_managers = User.objects.filter(
+        # Notify receiving store users
+        receiving_store_users = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='manager',
-            store=transfer.to_store
+            store=transfer.to_store,
+            is_active=True
+        ).filter(
+            role__in=['manager', 'inhouse_sales', 'tele_calling']
         )
-        users_to_notify.extend(receiving_store_managers)
+        users_to_notify.extend(receiving_store_users)
         
         # Remove duplicates
         unique_users = list({user.id: user for user in users_to_notify}.values())
@@ -49,17 +52,20 @@ class StockTransferNotificationService:
         # Notify business admin
         business_admins = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='business_admin'
+            role='business_admin',
+            is_active=True
         )
         users_to_notify.extend(business_admins)
         
-        # Notify sending store manager
-        sending_store_managers = User.objects.filter(
+        # Notify sending store users
+        sending_store_users = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='manager',
-            store=transfer.from_store
+            store=transfer.from_store,
+            is_active=True
+        ).filter(
+            role__in=['manager', 'inhouse_sales', 'tele_calling']
         )
-        users_to_notify.extend(sending_store_managers)
+        users_to_notify.extend(sending_store_users)
         
         # Remove duplicates
         unique_users = list({user.id: user for user in users_to_notify}.values())
@@ -92,17 +98,20 @@ class StockTransferNotificationService:
         # Notify business admin
         business_admins = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='business_admin'
+            role='business_admin',
+            is_active=True
         )
         users_to_notify.extend(business_admins)
         
-        # Notify both store managers
-        store_managers = User.objects.filter(
+        # Notify both store users
+        store_users = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='manager',
-            store__in=[transfer.from_store, transfer.to_store]
+            store__in=[transfer.from_store, transfer.to_store],
+            is_active=True
+        ).filter(
+            role__in=['manager', 'inhouse_sales', 'tele_calling']
         )
-        users_to_notify.extend(store_managers)
+        users_to_notify.extend(store_users)
         
         # Remove duplicates
         unique_users = list({user.id: user for user in users_to_notify}.values())
@@ -131,17 +140,20 @@ class StockTransferNotificationService:
         # Notify business admin
         business_admins = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='business_admin'
+            role='business_admin',
+            is_active=True
         )
         users_to_notify.extend(business_admins)
         
-        # Notify both store managers
-        store_managers = User.objects.filter(
+        # Notify both store users
+        store_users = User.objects.filter(
             tenant=transfer.from_store.tenant,
-            role='manager',
-            store__in=[transfer.from_store, transfer.to_store]
+            store__in=[transfer.from_store, transfer.to_store],
+            is_active=True
+        ).filter(
+            role__in=['manager', 'inhouse_sales', 'tele_calling']
         )
-        users_to_notify.extend(store_managers)
+        users_to_notify.extend(store_users)
         
         # Remove duplicates
         unique_users = list({user.id: user for user in users_to_notify}.values())

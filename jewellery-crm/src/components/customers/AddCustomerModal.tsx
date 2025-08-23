@@ -200,6 +200,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         mother_tongue: cleanStringField(formData.motherTongue),
         reason_for_visit: cleanStringField(formData.reasonForVisit),
         lead_source: cleanStringField(formData.leadSource),
+        status: formData.leadSource === 'exhibition' ? 'exhibition' : 'lead', // Set status based on lead source
         age_of_end_user: cleanStringField(formData.ageOfEndUser),
         saving_scheme: cleanStringField(formData.savingScheme),
         catchment_area: cleanStringField(formData.catchmentArea),
@@ -442,7 +443,8 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
         
     // Determine overall stage and probability based on all interests
     const hasDesignSelected = allInterests.some(interest => interest.preferences.designSelected);
-    const stage = hasDesignSelected ? 'closed_won' : 'exhibition';
+    // Default to store_walkin for new customers from store, not exhibition
+    const stage = hasDesignSelected ? 'closed_won' : 'store_walkin';
     const probability = hasDesignSelected ? 100 : 50;
     
     // Create consolidated notes with all interests
@@ -726,6 +728,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
                       <SelectItem value="walkin">Walk-in</SelectItem>
                       <SelectItem value="referral">Referral</SelectItem>
                       <SelectItem value="online">Online</SelectItem>
+                      <SelectItem value="exhibition">Exhibition</SelectItem>
                     </>
                   )}
                 </SelectContent>
@@ -1019,7 +1022,7 @@ export function AddCustomerModal({ open, onClose }: AddCustomerModalProps) {
                       <span className="font-medium">Probability:</span> {opportunity.probability}%
                     </div>
                     <div className="text-sm text-gray-600">
-                      <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : 'Exhibition'}
+                      <span className="font-medium">Stage:</span> {opportunity.stage === 'closed_won' ? 'Closed Won' : opportunity.stage === 'store_walkin' ? 'Store Walkin' : 'Exhibition'}
                     </div>
                     <div className="text-sm text-gray-600">
                       <span className="font-medium">Next Action:</span> {opportunity.next_action}
