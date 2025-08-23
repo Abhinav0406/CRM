@@ -113,7 +113,7 @@ class ChangePasswordView(APIView):
         user.save()
 
         # Log the password change for security audit
-        # Password change logged
+        print(f"Password changed for user: {user.username} ({user.role}) at {timezone.now()}")
 
         return Response({
             'message': 'Password changed successfully',
@@ -234,7 +234,7 @@ class UserCreateView(generics.CreateAPIView):
                     created_user.is_active = True
                     created_user.save()
             except Exception as e:
-                pass
+                print('Could not set user as active:', e)
         return response
 
 
@@ -341,10 +341,14 @@ class TeamMemberListView(generics.ListCreateAPIView):
         return TeamMemberSerializer
 
     def create(self, request, *args, **kwargs):
-        """Override create method to add better error handling."""
+        """Override create method to add debugging and better error handling."""
         try:
+            print(f"TeamMemberListView.create called with data: {request.data}")
             return super().create(request, *args, **kwargs)
         except Exception as e:
+            print(f"Error in TeamMemberListView.create: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     def get_queryset(self):
@@ -352,31 +356,48 @@ class TeamMemberListView(generics.ListCreateAPIView):
         user = self.request.user
         queryset = TeamMember.objects.all()
 
+        print(f"TeamMemberListView.get_queryset - User: {user.username}, Role: {user.role}, Tenant: {user.tenant}, Store: {user.store}")
+        print(f"Request headers: {dict(self.request.headers)}")
+
         if user.is_platform_admin:
+            print("User is platform admin - showing all team members")
             pass
         elif user.is_business_admin and user.tenant:
+            print(f"User is business admin - filtering by tenant: {user.tenant}")
             queryset = queryset.filter(user__tenant=user.tenant)
         elif user.is_manager and user.tenant and user.store:
             # Managers can see all team members in their store
+            print(f"User is manager - filtering by tenant: {user.tenant} and store: {user.store}")
             queryset = queryset.filter(user__tenant=user.tenant, user__store=user.store)
         elif user.is_manager and user.tenant:
             # Managers without specific store can see all team members in their tenant
+            print(f"User is manager without store - filtering by tenant: {user.tenant}")
             queryset = queryset.filter(user__tenant=user.tenant)
         elif user.role == 'tele_caller' and user.tenant and user.store:
+            print(f"User is tele_caller - filtering by tenant: {user.tenant} and store: {user.store}")
             queryset = queryset.filter(user__tenant=user.tenant, user__store=user.store, user__role='tele_caller')
         else:
+            print(f"User is other role - showing only self")
             queryset = queryset.filter(user=user)
 
         store_id = self.request.query_params.get('store')
         if store_id:
+            print(f"Additional store filter: {store_id}")
             queryset = queryset.filter(user__store_id=store_id)
 
+        print(f"Final queryset count: {queryset.count()}")
+        
+        # Print the actual team members being returned
+        for tm in queryset[:5]:  # Show first 5 for debugging
+            print(f"  - {tm.user.get_full_name()} ({tm.user.username}) - Role: {tm.user.role}")
+        
         return queryset
 
 
     def perform_create(self, serializer):
         """Set tenant for new team members."""
         user = self.request.user
+        print(f"TeamMemberListView.perform_create for user: {user.username}, role: {user.role}")
 
         # Restrict manager to only create certain roles
         if user.role == 'manager':
@@ -394,6 +415,7 @@ class TeamMemberListView(generics.ListCreateAPIView):
                     pass
 
         team_member = serializer.save()
+        print(f"Team member created successfully: {team_member.id}")
         
         # Update manager if provided
         manager_id = self.request.data.get('manager')
@@ -403,6 +425,7 @@ class TeamMemberListView(generics.ListCreateAPIView):
                 team_member.manager = manager
                 team_member.save()
             except TeamMember.DoesNotExist:
+                print(f"Manager with ID {manager_id} not found")
                 pass
         
         # Log activity
