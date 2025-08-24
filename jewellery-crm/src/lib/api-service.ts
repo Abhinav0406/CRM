@@ -728,6 +728,26 @@ class ApiService {
     });
   }
 
+  async createExhibitionLead(leadData: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    city?: string;
+    notes?: string;
+    customer_type?: string;
+  }): Promise<ApiResponse<Client>> {
+    return this.request('/clients/clients/', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...leadData,
+        status: 'exhibition',
+        lead_source: 'exhibition',
+        customer_type: leadData.customer_type || 'individual'
+      }),
+    });
+  }
+
   // Products
   async getProducts(params?: {
     page?: number;
@@ -1224,6 +1244,18 @@ class ApiService {
     if (params?.type) queryParams.append('type', params.type);
 
     return this.request(`/analytics/dashboard/${queryParams.toString() ? `?${queryParams}` : ''}`);
+  }
+
+  // Store Analytics (for managers and store staff)
+  async getStoreAnalytics(params?: {
+    period?: string;
+    type?: string;
+  }): Promise<ApiResponse<any>> {
+    const queryParams = new URLSearchParams();
+    if (params?.period) queryParams.append('period', params.period);
+    if (params?.type) queryParams.append('type', params.type);
+
+    return this.request(`/analytics/store/${queryParams.toString() ? `?${queryParams}` : ''}`);
   }
 
   // Support Tickets

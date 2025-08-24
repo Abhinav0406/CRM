@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import AddAnnouncementModal from '@/components/announcements/AddAnnouncementModal';
 import ReplyMessageModal from '@/components/announcements/ReplyMessageModal';
 import AddMessageModal from '@/components/announcements/AddMessageModal';
+import AnnouncementDetailModal from '@/components/announcements/AnnouncementDetailModal';
 
 interface Announcement {
   id: number;
@@ -16,17 +17,29 @@ interface Announcement {
   content: string;
   announcement_type: string;
   priority: string;
+  priority_color?: string;
   is_pinned: boolean;
   requires_acknowledgment: boolean;
+  target_roles: string[];
+  target_stores: Array<{ id: number; name: string; code: string }>;
+  target_tenants: Array<{ id: number; name: string; slug: string }>;
   author: {
     id: number;
     first_name: string;
     last_name: string;
     username: string;
+    role: string;
+  };
+  tenant: {
+    id: number;
+    name: string;
+    slug: string;
   };
   created_at: string;
+  updated_at: string;
   publish_at: string;
   expires_at?: string;
+  is_active: boolean;
   is_read?: boolean;
   is_acknowledged?: boolean;
   is_read_by_current_user?: boolean;
@@ -59,6 +72,14 @@ export default function AnnouncementsPage() {
   const [activeTab, setActiveTab] = useState<'announcements' | 'messages'>('announcements');
   const [filter, setFilter] = useState<'all' | 'unread' | 'urgent'>('all');
 
+  // Add debugging for user role
+  console.log('AnnouncementsPage - User:', user);
+  console.log('AnnouncementsPage - User role:', user?.role);
+  console.log('AnnouncementsPage - Can create announcement:', user?.role === 'manager' || user?.role === 'inhouse_sales' || user?.role === 'business_admin');
+
+  // Check if user can create announcements
+  const canCreateAnnouncement = user?.role === 'manager' || user?.role === 'inhouse_sales' || user?.role === 'business_admin';
+
   useEffect(() => {
     fetchAnnouncements();
     fetchTeamMessages();
@@ -68,25 +89,40 @@ export default function AnnouncementsPage() {
     try {
       const response = await apiService.getAnnouncements();
       console.log('Announcements response:', response);
-      if (response.success) {
-        // Ensure we always have an array
-        const data = response.data as any;
-        console.log('Announcements data:', data);
-        console.log('Data type:', typeof data);
-        console.log('Is array:', Array.isArray(data));
-        
-        if (Array.isArray(data)) {
-          console.log('Setting announcements from array:', data.length, 'items');
-          setAnnouncements(data);
-        } else if (data && data.results && Array.isArray(data.results)) {
-          console.log('Setting announcements from results:', data.results.length, 'items');
-          setAnnouncements(data.results);
-        } else {
-          console.warn('Unexpected announcements data format:', data);
-          setAnnouncements([]);
-        }
+      
+      // Handle both response formats
+      let announcementsData: any;
+      
+      if (response.success && response.data) {
+        // Expected format: {success: true, data: [...]}
+        announcementsData = response.data;
+        console.log('Using response.data format');
+      } else if (Array.isArray(response)) {
+        // Direct format: [...] (current backend format)
+        announcementsData = response;
+        console.log('Using direct array format');
+      } else if (response && Array.isArray(response)) {
+        // Fallback: response is already an array
+        announcementsData = response;
+        console.log('Using fallback array format');
       } else {
-        console.error('Failed to fetch announcements:', response);
+        console.warn('Unexpected announcements response format:', response);
+        setAnnouncements([]);
+        return;
+      }
+      
+      console.log('Announcements data:', announcementsData);
+      console.log('Data type:', typeof announcementsData);
+      console.log('Is array:', Array.isArray(announcementsData));
+      
+      if (Array.isArray(announcementsData)) {
+        console.log('Setting announcements from array:', announcementsData.length, 'items');
+        setAnnouncements(announcementsData);
+      } else if (announcementsData && announcementsData.results && Array.isArray(announcementsData.results)) {
+        console.log('Setting announcements from results:', announcementsData.results.length, 'items');
+        setAnnouncements(announcementsData.results);
+      } else {
+        console.warn('Unexpected announcements data format:', announcementsData);
         setAnnouncements([]);
       }
     } catch (error) {
@@ -99,19 +135,34 @@ export default function AnnouncementsPage() {
     try {
       const response = await apiService.getTeamMessages();
       console.log('Team messages response:', response);
-      if (response.success) {
-        // Ensure we always have an array
-        const data = response.data as any;
-        if (Array.isArray(data)) {
-          setTeamMessages(data);
-        } else if (data && data.results && Array.isArray(data.results)) {
-          setTeamMessages(data.results);
-        } else {
-          console.warn('Unexpected team messages data format:', data);
-          setTeamMessages([]);
-        }
+      
+      // Handle both response formats
+      let messagesData: any;
+      
+      if (response.success && response.data) {
+        // Expected format: {success: true, data: [...]}
+        messagesData = response.data;
+        console.log('Using response.data format for messages');
+      } else if (Array.isArray(response)) {
+        // Direct format: [...] (current backend format)
+        messagesData = response;
+        console.log('Using direct array format for messages');
+      } else if (response && Array.isArray(response)) {
+        // Fallback: response is already an array
+        messagesData = response;
+        console.log('Using fallback array format for messages');
       } else {
-        console.error('Failed to fetch team messages:', response);
+        console.warn('Unexpected team messages response format:', response);
+        setTeamMessages([]);
+        return;
+      }
+      
+      if (Array.isArray(messagesData)) {
+        setTeamMessages(messagesData);
+      } else if (messagesData && messagesData.results && Array.isArray(messagesData.results)) {
+        setTeamMessages(messagesData.results);
+      } else {
+        console.warn('Unexpected team messages data format:', messagesData);
         setTeamMessages([]);
       }
     } catch (error) {
@@ -314,19 +365,44 @@ export default function AnnouncementsPage() {
         <div>
           <h1 className="text-3xl font-bold text-text-primary">Announcements</h1>
           <p className="text-text-secondary mt-1">Stay updated with important information</p>
+          {user && (
+            <p className="text-xs text-text-muted mt-2">
+              User Role: {user.role} | Can Create: {canCreateAnnouncement ? 'Yes' : 'No'}
+            </p>
+          )}
         </div>
-                 <div className="flex items-center gap-2">
-           <AddAnnouncementModal onSuccess={handleRefresh} />
-           <AddMessageModal onSuccess={handleRefresh} />
-           <Badge variant="outline" className="flex items-center gap-1">
-             <Bell className="w-4 h-4" />
-             {unreadAnnouncementsCount} unread
-           </Badge>
-           <Badge variant="outline" className="flex items-center gap-1">
-             <MessageSquare className="w-4 h-4" />
-             {unreadMessagesCount} messages
-           </Badge>
-         </div>
+        <div className="flex items-center gap-2">
+          {canCreateAnnouncement && (
+            <>
+              <AddAnnouncementModal onSuccess={handleRefresh} />
+              <AddMessageModal onSuccess={handleRefresh} />
+              <Button 
+                onClick={() => {
+                  console.log('Test button clicked');
+                  console.log('User role:', user?.role);
+                  console.log('Can create:', canCreateAnnouncement);
+                }}
+                variant="outline"
+                size="sm"
+              >
+                Test Add
+              </Button>
+            </>
+          )}
+          {!canCreateAnnouncement && (
+            <div className="text-sm text-red-500">
+              Role: {user?.role} - Cannot create announcements
+            </div>
+          )}
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Bell className="w-4 h-4" />
+            {unreadAnnouncementsCount} unread
+          </Badge>
+          <Badge variant="outline" className="flex items-center gap-1">
+            <MessageSquare className="w-4 h-4" />
+            {unreadMessagesCount} messages
+          </Badge>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -425,27 +501,30 @@ export default function AnnouncementsPage() {
                 </p>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                                         {!announcement.is_read_by_current_user && (
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         onClick={() => markAsRead(announcement.id)}
-                       >
-                         Mark as Read
-                       </Button>
-                     )}
-                     {announcement.requires_acknowledgment && !announcement.is_acknowledged_by_current_user && (
-                       <Button
-                         size="sm"
-                         onClick={() => acknowledgeAnnouncement(announcement.id)}
-                       >
-                         Acknowledge
-                       </Button>
-                     )}
-                   </div>
-                   {announcement.is_read_by_current_user && (
-                     <CheckCircle className="w-4 h-4 text-green-500" />
-                   )}
+                    {!announcement.is_read_by_current_user && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markAsRead(announcement.id)}
+                      >
+                        Mark as Read
+                      </Button>
+                    )}
+                    {announcement.requires_acknowledgment && !announcement.is_acknowledged_by_current_user && (
+                      <Button
+                        size="sm"
+                        onClick={() => acknowledgeAnnouncement(announcement.id)}
+                      >
+                        Acknowledge
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AnnouncementDetailModal announcement={announcement} onSuccess={handleRefresh} />
+                    {announcement.is_read_by_current_user && (
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, Filter, MoreHorizontal, Calendar, Clock, User, MapPin } from 'lucide-react';
+
+import { Search, Filter, MoreHorizontal, Calendar, Clock, User, MapPin, Eye, CheckCircle, XCircle, AlertTriangle, CalendarDays, RefreshCw } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
+import { useToast } from '@/hooks/use-toast';
+import { AppointmentDetailModal } from '@/components/appointments/AppointmentDetailModal';
 
 interface Appointment {
   id: number;
@@ -36,45 +38,260 @@ interface Appointment {
   deleted_at?: string;
 }
 
-export default function AppointmentsPage() {
+interface Customer {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+}
+
+interface AppointmentStats {
+  totalAppointments: number;
+  todayAppointments: number;
+  upcomingAppointments: number;
+  completedAppointments: number;
+  cancelledAppointments: number;
+  overdueAppointments: number;
+}
+
+export default function BusinessAdminAppointmentsPage() {
+  const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [stats, setStats] = useState<AppointmentStats>({
+    totalAppointments: 0,
+    todayAppointments: 0,
+    upcomingAppointments: 0,
+    completedAppointments: 0,
+    cancelledAppointments: 0,
+    overdueAppointments: 0,
+  });
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [showOverdue, setShowOverdue] = useState(false);
+  
+
 
   useEffect(() => {
     fetchAppointments();
-  }, [currentPage, searchTerm, statusFilter]);
+    fetchCustomers();
+    // Set up daily notification check
+    const checkTodayAppointments = () => {
+      checkTodayAppointmentsNotification();
+    };
+    
+    // Check immediately
+    checkTodayAppointments();
+    
+    // Check every hour
+    const interval = setInterval(checkTodayAppointments, 60 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Filter appointments based on search term, status, and date
+    let filtered = appointments || [];
+    
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(appointment => 
+        appointment.purpose?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        appointment.client?.toString().includes(searchTerm) ||
+        appointment.client_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filter by status
+    if (statusFilter) {
+      filtered = filtered.filter(appointment => appointment.status === statusFilter);
+    }
+    
+    // Filter by date - show today + future + incomplete past
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    filtered = filtered.filter(appointment => {
+      const appointmentDate = new Date(appointment.date);
+      const appointmentDateTime = new Date(appointmentDate.getFullYear(), appointmentDate.getMonth(), appointmentDate.getDate());
+      
+      // Always show today and future appointments
+      if (appointmentDateTime >= today) {
+        return true;
+      }
+      
+      // Show past appointments only if they're incomplete and user wants to see overdue
+      if (showOverdue && appointment.status !== 'completed' && appointment.status !== 'cancelled') {
+        return true;
+      }
+      
+      return false;
+    });
+    
+    // Sort appointments: today first, then by date
+    filtered.sort((a, b) => {
+      const aDate = new Date(a.date);
+      const bDate = new Date(b.date);
+      const aIsToday = aDate.toDateString() === today.toDateString();
+      const bIsToday = bDate.toDateString() === today.toDateString();
+      
+      if (aIsToday && !bIsToday) return -1;
+      if (!aIsToday && bIsToday) return 1;
+      
+      return aDate.getTime() - bDate.getTime();
+    });
+    
+    setFilteredAppointments(filtered);
+  }, [appointments, searchTerm, statusFilter, showOverdue]);
+
+  useEffect(() => {
+    // Calculate stats from appointments
+    const appointmentsArray = appointments || [];
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const totalAppointments = appointmentsArray.length;
+    const todayAppointments = appointmentsArray.filter(a => {
+      const appointmentDate = new Date(a.date);
+      return appointmentDate.toDateString() === today.toDateString();
+    }).length;
+    
+    const upcomingAppointments = appointmentsArray.filter(a => {
+      const appointmentDate = new Date(a.date);
+      return appointmentDate >= today && (a.status === 'scheduled' || a.status === 'confirmed');
+    }).length;
+    
+    const completedAppointments = appointmentsArray.filter(a => a.status === 'completed').length;
+    const cancelledAppointments = appointmentsArray.filter(a => a.status === 'cancelled').length;
+    
+    const overdueAppointments = appointmentsArray.filter(a => {
+      const appointmentDate = new Date(a.date);
+      return appointmentDate < today && a.status !== 'completed' && a.status !== 'cancelled';
+    }).length;
+
+    setStats({
+      totalAppointments,
+      todayAppointments,
+      upcomingAppointments,
+      completedAppointments,
+      cancelledAppointments,
+      overdueAppointments,
+    });
+  }, [appointments]);
+
+  const checkTodayAppointmentsNotification = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentHour = now.getHours();
+    
+    const todayAppointments = appointments.filter(a => {
+      const appointmentDate = new Date(a.date);
+      return appointmentDate.toDateString() === today.toDateString() && 
+             a.status === 'scheduled' || a.status === 'confirmed';
+    });
+    
+    if (todayAppointments.length > 0) {
+      // Check if any appointment is within the next hour
+      const upcomingAppointments = todayAppointments.filter(a => {
+        const [hours, minutes] = a.time.split(':');
+        const appointmentHour = parseInt(hours);
+        const appointmentMinute = parseInt(minutes);
+        const appointmentTime = appointmentHour * 60 + appointmentMinute;
+        const currentTime = currentHour * 60 + now.getMinutes();
+        
+        // Show notification if appointment is within the next hour
+        return (appointmentTime - currentTime) <= 60 && (appointmentTime - currentTime) > 0;
+      });
+      
+      if (upcomingAppointments.length > 0) {
+        upcomingAppointments.forEach(appointment => {
+          const [hours, minutes] = appointment.time.split(':');
+          const appointmentTime = `${hours}:${minutes}`;
+          
+          toast({
+            title: "🔔 Upcoming Appointment",
+            description: `${appointment.client_name || 'Customer'} has an appointment at ${appointmentTime}`,
+            variant: "default",
+          });
+        });
+      }
+      
+      // Show summary notification for today's appointments
+      if (currentHour === 9) { // Show at 9 AM
+        toast({
+          title: "📅 Today's Appointments",
+          description: `You have ${todayAppointments.length} appointment(s) scheduled for today`,
+          variant: "default",
+        });
+      }
+    }
+  };
 
   const fetchAppointments = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getAppointments({
-        page: currentPage,
-        status: statusFilter === 'all' ? undefined : statusFilter,
-      });
+      console.log('=== FETCHING APPOINTMENTS ===');
+      const response = await apiService.getAppointments();
+      console.log('Appointments API response:', response);
+      console.log('Response success:', response.success);
+      console.log('Response data type:', typeof response.data);
+      console.log('Response data:', response.data);
       
-      if (response.success) {
-        const data = response.data as any;
-        setAppointments(Array.isArray(data) ? data : data.results || []);
-      }
+      // Ensure we have an array of appointments
+      const appointmentsData = Array.isArray(response.data) ? response.data : [];
+      console.log('Processed appointments data:', appointmentsData);
+      console.log('Appointments count:', appointmentsData.length);
+      
+      setAppointments(appointmentsData);
     } catch (error) {
-      console.error('Failed to fetch appointments:', error);
-      setAppointments([]);
+      console.error('Error fetching appointments:', error);
+      setAppointments([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const response = await apiService.getClients();
+      if (response.success && response.data) {
+        const customersData = Array.isArray(response.data) ? response.data : [];
+        setCustomers(customersData);
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      setCustomers([]);
+    }
+  };
+
+  const formatDateTime = (dateString: string, timeString: string) => {
+    const date = new Date(dateString);
+    const time = timeString ? timeString : '00:00';
+    const [hours, minutes] = time.split(':');
+    date.setHours(parseInt(hours), parseInt(minutes));
+    
+    return date.toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   const getStatusBadgeVariant = (status: string) => {
-    switch (status?.toLowerCase()) {
+    switch (status) {
       case 'scheduled':
-        return 'outline';
+        return 'secondary';
       case 'confirmed':
         return 'default';
       case 'completed':
-        return 'secondary';
+        return 'default';
       case 'cancelled':
         return 'destructive';
       case 'rescheduled':
@@ -86,259 +303,276 @@ export default function AppointmentsPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Invalid Date';
-      
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch (error) {
-      return 'Invalid Date';
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'scheduled':
+        return <Clock className="w-4 h-4 text-blue-500" />;
+      case 'confirmed':
+        return <Calendar className="w-4 h-4 text-green-500" />;
+      case 'completed':
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'cancelled':
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-500" />;
     }
   };
 
-  const formatTime = (timeString: string) => {
-    if (!timeString) return 'N/A';
-    
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const date = new Date();
-      date.setHours(parseInt(hours), parseInt(minutes));
-      
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
-    } catch (error) {
-      return 'Invalid Time';
-    }
-  };
-
-  const getUpcomingAppointments = () => {
+  const isAppointmentOverdue = (appointment: Appointment) => {
     const now = new Date();
-    return appointments.filter(apt => {
-      const aptDate = new Date(apt.date);
-      return aptDate >= now && apt.status === 'scheduled';
-    }).length;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const appointmentDate = new Date(appointment.date);
+    const appointmentDateTime = new Date(appointmentDate.getFullYear(), appointmentDate.getMonth(), appointmentDate.getDate());
+    
+    return appointmentDateTime < today && appointment.status !== 'completed' && appointment.status !== 'cancelled';
   };
 
-  const getTodayAppointments = () => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    return appointments.filter(apt => apt.date === todayStr).length;
+  const isAppointmentToday = (appointment: Appointment) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const appointmentDate = new Date(appointment.date);
+    const appointmentDateTime = new Date(appointmentDate.getFullYear(), appointmentDate.getMonth(), appointmentDate.getDate());
+    
+    return appointmentDateTime.toDateString() === today.toDateString();
   };
 
-  const getCompletedAppointments = () => {
-    return appointments.filter(apt => apt.status === 'completed').length;
+  const handleViewAppointment = (appointment: Appointment) => {
+    setSelectedAppointment(appointment);
+    setIsDetailModalOpen(true);
   };
+
+  const handleRescheduleAppointment = async (appointment: Appointment) => {
+    // TODO: Implement reschedule functionality
+    console.log('Reschedule appointment:', appointment);
+    toast({
+      title: "Reschedule Appointment",
+      description: "Reschedule functionality will be implemented soon",
+      variant: "default",
+    });
+  };
+
+
+
+  if (loading) {
+  return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-text-primary tracking-tight">Appointments</h1>
-          <p className="text-text-secondary mt-1">Manage customer appointments and schedules</p>
-        </div>
-        
-      </div>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+              <div>
+          <h1 className="text-2xl font-semibold text-text-primary">Appointments</h1>
+          <p className="text-text-secondary mt-1">Manage and track all appointments</p>
+              </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchAppointments}
+            className="flex items-center gap-1"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </Button>
+              </div>
+            </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Total Appointments</p>
-                <p className="text-2xl font-bold text-text-primary">{appointments.length}</p>
-              </div>
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <Calendar className="w-4 h-4 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="flex flex-col gap-1 p-5">
+          <div className="text-xl font-bold text-text-primary">{stats.todayAppointments}</div>
+          <div className="text-sm text-text-secondary font-medium">Today's Appointments</div>
         </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Today's Appointments</p>
-                <p className="text-2xl font-bold text-text-primary">{getTodayAppointments()}</p>
-              </div>
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                <Clock className="w-4 h-4 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
+        <Card className="flex flex-col gap-1 p-5">
+          <div className="text-xl font-bold text-text-primary">{stats.upcomingAppointments}</div>
+          <div className="text-sm text-text-secondary font-medium">Upcoming</div>
         </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Upcoming</p>
-                <p className="text-2xl font-bold text-text-primary">{getUpcomingAppointments()}</p>
-              </div>
-              <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                <Calendar className="w-4 h-4 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
+        <Card className="flex flex-col gap-1 p-5">
+          <div className="text-xl font-bold text-text-primary">{stats.completedAppointments}</div>
+          <div className="text-sm text-text-secondary font-medium">Completed</div>
         </Card>
-        <Card className="shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-text-secondary">Completed</p>
-                <p className="text-2xl font-bold text-text-primary">{getCompletedAppointments()}</p>
-              </div>
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-orange-600 text-sm font-semibold">✓</span>
-              </div>
-            </div>
-          </CardContent>
+        <Card className="flex flex-col gap-1 p-5">
+          <div className="text-xl font-bold text-text-primary">{stats.overdueAppointments}</div>
+          <div className="text-sm text-text-secondary font-medium">Overdue</div>
         </Card>
       </div>
 
-      {/* Search and Filters */}
-      <Card className="shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search appointments..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+      {/* Overdue Appointments Toggle */}
+      {stats.overdueAppointments > 0 && (
+        <Card className="p-4 border-orange-200 bg-orange-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-600" />
+              <span className="font-medium text-orange-800">
+                You have {stats.overdueAppointments} incomplete appointment(s) from previous days
+              </span>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-48">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="scheduled">Scheduled</SelectItem>
-                <SelectItem value="confirmed">Confirmed</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="rescheduled">Rescheduled</SelectItem>
-                <SelectItem value="no_show">No Show</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              More Filters
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowOverdue(!showOverdue)}
+              className="border-orange-300 text-orange-700 hover:bg-orange-100"
+            >
+              {showOverdue ? 'Hide Overdue' : 'Show Overdue'}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </Card>
+      )}
 
       {/* Appointments Table */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>All Appointments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-text-secondary">Loading appointments...</div>
+      <Card className="p-4 flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+          <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+              placeholder="Search by customer or type..."
+              className="pl-10 w-full md:w-80"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
-          ) : appointments.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="text-text-secondary mb-2">No appointments found</div>
-              <Button variant="outline">
-                Schedule your first appointment
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Client</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Date & Time</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Purpose</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Location</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Duration</th>
-                    <th className="text-left py-3 px-4 font-medium text-text-secondary">Actions</th>
+          <select
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="rescheduled">Rescheduled</option>
+            <option value="no_show">No Show</option>
+          </select>
+          </div>
+        
+        <div className="overflow-x-auto rounded-lg border border-border bg-white mt-2">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Customer</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Date/Time</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Purpose</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Status</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Duration</th>
+                <th className="px-4 py-3 text-left font-semibold text-text-secondary">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {appointments.map((appointment) => (
-                    <tr key={appointment.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <User className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-text-primary">
-                              {appointment.client_name || `Client #${appointment.client}`}
-                            </div>
-                            <div className="text-sm text-text-secondary">
-                              ID: {appointment.client}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <div className="font-medium text-text-primary">
-                            {formatDate(appointment.date)}
-                          </div>
-                          <div className="text-sm text-text-secondary">
-                            {formatTime(appointment.time)}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="max-w-xs">
-                          <div className="text-text-primary">{appointment.purpose}</div>
-                          {appointment.notes && (
-                            <div className="text-sm text-text-secondary truncate">
-                              {appointment.notes}
-                            </div>
+              {filteredAppointments.length > 0 ? (
+                filteredAppointments.map((appointment) => {
+                  const isOverdue = isAppointmentOverdue(appointment);
+                  const isToday = isAppointmentToday(appointment);
+                  
+                  return (
+                    <tr 
+                      key={appointment.id} 
+                      className={`border-t border-border hover:bg-gray-50 ${
+                        isToday ? 'bg-blue-50' : ''
+                      } ${
+                        isOverdue ? 'bg-orange-50' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-medium text-text-primary">
+                        <div className="flex items-center gap-2">
+                          {appointment.client_name || `Customer #${appointment.client}`}
+                          {isToday && (
+                            <Badge variant="default" className="bg-blue-600 text-white text-xs">
+                              <CalendarDays className="w-3 h-3 mr-1" />
+                              Today
+                            </Badge>
+                          )}
+                          {isOverdue && (
+                            <Badge variant="destructive" className="text-xs">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              Overdue
+                            </Badge>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4 text-gray-400" />
-                          <span className="text-text-secondary">
-                            {appointment.location || 'Not specified'}
-                          </span>
+                      <td className="px-4 py-3 text-text-primary">
+                        {formatDateTime(appointment.date, appointment.time)}
+                      </td>
+                      <td className="px-4 py-3 text-text-primary">
+                        <div className="max-w-xs truncate" title={appointment.purpose}>
+                          {appointment.purpose}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <Badge variant={getStatusBadgeVariant(appointment.status)}>
-                          {appointment.status?.replace('_', ' ').charAt(0).toUpperCase() + appointment.status?.replace('_', ' ').slice(1)}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(appointment.status)}
+                          <Badge variant={getStatusBadgeVariant(appointment.status)} className="capitalize text-xs">
+                            {appointment.status}
                         </Badge>
+                        </div>
                       </td>
-                      <td className="py-3 px-4 text-text-secondary">
+                      <td className="px-4 py-3 text-text-primary">
                         {appointment.duration} min
                       </td>
-                      <td className="py-3 px-4">
-                        <Button variant="ghost" size="sm">
-                          <MoreHorizontal className="w-4 h-4" />
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-blue-600 hover:text-blue-800"
+                            onClick={() => handleViewAppointment(appointment)}
+                            title="View appointment details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          {isOverdue && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                              onClick={() => handleRescheduleAppointment(appointment)}
+                              title="Reschedule overdue appointment"
+                            >
+                              <RefreshCw className="w-4 h-4" />
                         </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
+                    {appointments.length === 0 ? 'No appointments found' : 'No appointments match your search criteria'}
+                      </td>
+                    </tr>
+              )}
                 </tbody>
               </table>
+        </div>
+        
+        {filteredAppointments.length > 0 && (
+          <div className="text-sm text-text-secondary text-center py-2">
+            Showing {filteredAppointments.length} of {appointments.length} appointments
+            {!showOverdue && stats.overdueAppointments > 0 && (
+              <span className="ml-2 text-orange-600">
+                • {stats.overdueAppointments} overdue appointment(s) hidden
+              </span>
+            )}
             </div>
           )}
-        </CardContent>
       </Card>
+
+
+
+      {/* Appointment Detail Modal */}
+      <AppointmentDetailModal
+        appointment={selectedAppointment}
+        open={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedAppointment(null);
+        }}
+      />
     </div>
   );
 }

@@ -30,47 +30,113 @@ def dashboard_stats(request):
     start_date = end_date - timedelta(days=30)
     previous_start = start_date - timedelta(days=30)
     
+    # Check if user is store-specific (manager, inhouse_sales, etc.)
+    user = request.user
+    store_filter = {}
+    
+    # If user has a specific store, filter by that store
+    if hasattr(user, 'store') and user.store:
+        store_filter = {'store': user.store}
+        print(f"Filtering analytics for store: {user.store.name}")
+    elif user.role in ['manager', 'inhouse_sales'] and hasattr(user, 'store'):
+        store_filter = {'store': user.store}
+        print(f"Filtering analytics for store: {user.store.name}")
+    elif user.role == 'business_admin':
+        print("Business admin - showing all data across all stores")
+        store_filter = {}
+    else:
+        print("No store filter applied - showing all data")
+    
     # Current period stats
     current_clients = Client.objects.filter(
         created_at__gte=start_date,
-        is_deleted=False
+        is_deleted=False,
+        **store_filter
     ).count()
     
-    current_sales = Sale.objects.filter(
-        created_at__gte=start_date
-    ).count()
+    # For sales, filter by store if user has one, otherwise show all
+    if store_filter:
+        current_sales = Sale.objects.filter(
+            created_at__gte=start_date,
+            sales_representative__store=user.store
+        ).count()
+    else:
+        current_sales = Sale.objects.filter(
+            created_at__gte=start_date
+        ).count()
     
-    current_products = Product.objects.filter(
-        created_at__gte=start_date
-    ).count()
+    # For products, filter by store if user has one, otherwise show all
+    if store_filter:
+        current_products = Product.objects.filter(
+            created_at__gte=start_date,
+            store=user.store
+        ).count()
+    else:
+        current_products = Product.objects.filter(
+            created_at__gte=start_date
+        ).count()
     
-    current_revenue = Sale.objects.filter(
-        created_at__gte=start_date,
-        status__in=['confirmed', 'delivered']
-    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    # For revenue, filter by store if user has one, otherwise show all
+    if store_filter:
+        current_revenue = Sale.objects.filter(
+            created_at__gte=start_date,
+            status__in=['confirmed', 'delivered'],
+            sales_representative__store=user.store
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+    else:
+        current_revenue = Sale.objects.filter(
+            created_at__gte=start_date,
+            status__in=['confirmed', 'delivered']
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
     
     # Previous period stats
     previous_clients = Client.objects.filter(
         created_at__gte=previous_start,
         created_at__lt=start_date,
-        is_deleted=False
+        is_deleted=False,
+        **store_filter
     ).count()
     
-    previous_sales = Sale.objects.filter(
-        created_at__gte=previous_start,
-        created_at__lt=start_date
-    ).count()
+    # For sales, filter by store if user has one, otherwise show all
+    if store_filter:
+        previous_sales = Sale.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date,
+            sales_representative__store=user.store
+        ).count()
+    else:
+        previous_sales = Sale.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date
+        ).count()
     
-    previous_products = Product.objects.filter(
-        created_at__gte=previous_start,
-        created_at__lt=start_date
-    ).count()
+    # For products, filter by store if user has one, otherwise show all
+    if store_filter:
+        previous_products = Product.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date,
+            store=user.store
+        ).count()
+    else:
+        previous_products = Product.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date
+        ).count()
     
-    previous_revenue = Sale.objects.filter(
-        created_at__gte=previous_start,
-        created_at__lt=start_date,
-        status__in=['confirmed', 'delivered']
-    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    # For revenue, filter by store if user has one, otherwise show all
+    if store_filter:
+        previous_revenue = Sale.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date,
+            status__in=['confirmed', 'delivered'],
+            sales_representative__store=user.store
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+    else:
+        previous_revenue = Sale.objects.filter(
+            created_at__gte=previous_start,
+            created_at__lt=start_date,
+            status__in=['confirmed', 'delivered']
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
     
     # Calculate percentage changes
     def calculate_change(current, previous):
@@ -85,7 +151,8 @@ def dashboard_stats(request):
     # Recent clients
     recent_clients = Client.objects.filter(
         created_at__gte=end_date - timedelta(days=7),
-        is_deleted=False
+        is_deleted=False,
+        **store_filter
     ).order_by('-created_at')[:3]
     
     for client in recent_clients:
@@ -98,9 +165,15 @@ def dashboard_stats(request):
         })
     
     # Recent sales
-    recent_sales = Sale.objects.filter(
-        created_at__gte=end_date - timedelta(days=7)
-    ).order_by('-created_at')[:3]
+    if store_filter:
+        recent_sales = Sale.objects.filter(
+            created_at__gte=end_date - timedelta(days=7),
+            sales_representative__store=user.store
+        ).order_by('-created_at')[:3]
+    else:
+        recent_sales = Sale.objects.filter(
+            created_at__gte=end_date - timedelta(days=7)
+        ).order_by('-created_at')[:3]
     
     for sale in recent_sales:
         recent_activities.append({
@@ -114,9 +187,15 @@ def dashboard_stats(request):
     # Recent appointments (if appointments model exists)
     try:
         from apps.clients.models import Appointment
-        recent_appointments = Appointment.objects.filter(
-            created_at__gte=end_date - timedelta(days=7)
-        ).order_by('-created_at')[:3]
+        if store_filter:
+            recent_appointments = Appointment.objects.filter(
+                created_at__gte=end_date - timedelta(days=7),
+                assigned_to__store=user.store
+            ).order_by('-created_at')[:3]
+        else:
+            recent_appointments = Appointment.objects.filter(
+                created_at__gte=end_date - timedelta(days=7)
+            ).order_by('-created_at')[:3]
         
         for appointment in recent_appointments:
             recent_activities.append({
@@ -137,15 +216,56 @@ def dashboard_stats(request):
     for activity in recent_activities:
         activity.pop('timestamp', None)
     
-    # Total counts (not just recent)
-    total_clients = Client.objects.filter(is_deleted=False).count()
-    total_sales = Sale.objects.count()
-    total_products = Product.objects.count()
-    total_revenue = Sale.objects.filter(
-        status__in=['confirmed', 'delivered']
-    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    # Total counts (not just recent) - filtered by store
+    total_clients = Client.objects.filter(is_deleted=False, **store_filter).count()
     
-    return Response({
+    # For sales, filter by store if user has one, otherwise show all
+    if store_filter:
+        total_sales = Sale.objects.filter(sales_representative__store=user.store).count()
+    else:
+        total_sales = Sale.objects.count()
+    
+    # For products, filter by store if user has one, otherwise show all
+    if store_filter:
+        total_products = Product.objects.filter(store=user.store).count()
+    else:
+        total_products = Product.objects.count()
+    
+    # For revenue, filter by store if user has one, otherwise show all
+    if store_filter:
+        total_revenue = Sale.objects.filter(
+            status__in=['confirmed', 'delivered'],
+            sales_representative__store=user.store
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+    else:
+        total_revenue = Sale.objects.filter(
+            status__in=['confirmed', 'delivered']
+        ).aggregate(total=Sum('total_amount'))['total'] or 0
+    
+    # Add store context if filtering by store
+    if store_filter:
+        response_data = {
+            'total_customers': total_clients,
+            'total_sales': total_sales,
+            'total_products': total_products,
+            'total_revenue': float(total_revenue),
+            'customers_change': calculate_change(current_clients, previous_clients),
+            'sales_change': calculate_change(current_sales, previous_sales),
+            'products_change': calculate_change(current_products, previous_products),
+            'revenue_change': calculate_change(current_revenue, previous_revenue),
+            'recent_activities': recent_activities
+        }
+        response_data['store_name'] = user.store.name if hasattr(user, 'store') else 'Unknown Store'
+        response_data['store_info'] = {
+            'id': user.store.id,
+            'name': user.store.name,
+            'address': getattr(user.store, 'address', ''),
+            'phone': getattr(user.store, 'phone', ''),
+            'email': getattr(user.store, 'email', '')
+        }
+        response_data['scope'] = 'store'
+    else:
+        response_data = {
         'total_customers': total_clients,
         'total_sales': total_sales,
         'total_products': total_products,
@@ -155,7 +275,10 @@ def dashboard_stats(request):
         'products_change': calculate_change(current_products, previous_products),
         'revenue_change': calculate_change(current_revenue, previous_revenue),
         'recent_activities': recent_activities
-    })
+        }
+        response_data['scope'] = 'all'
+    
+    return Response(response_data)
 
 
 @api_view(['GET'])
@@ -380,4 +503,180 @@ def product_analytics(request):
         'products_by_category': list(products_by_category),
         'low_stock_products': list(low_stock_products),
         'top_products': list(top_products)
+    })
+
+
+@api_view(['GET'])
+def store_analytics(request):
+    """
+    Get store-specific analytics for managers and store staff.
+    """
+    user = request.user
+    
+    # Check if user has a store
+    if not hasattr(user, 'store') or not user.store:
+        return Response({
+            'error': 'User not associated with any store'
+        }, status=400)
+    
+    store = user.store
+    print(f"Getting analytics for store: {store.name}")
+    
+    # Get date range for comparisons (last 30 days vs previous 30 days)
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=30)
+    previous_start = start_date - timedelta(days=30)
+    
+    # Store-specific filters
+    store_filter = {'store': store}
+    
+    # Current period stats
+    current_clients = Client.objects.filter(
+        created_at__gte=start_date,
+        is_deleted=False,
+        store=store
+    ).count()
+    
+    current_sales = Sale.objects.filter(
+        created_at__gte=start_date,
+        sales_representative__store=store
+    ).count()
+    
+    current_products = Product.objects.filter(
+        created_at__gte=start_date,
+        store=store
+    ).count()
+    
+    current_revenue = Sale.objects.filter(
+        created_at__gte=start_date,
+        status__in=['confirmed', 'delivered'],
+        sales_representative__store=store
+    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    
+    # Previous period stats
+    previous_clients = Client.objects.filter(
+        created_at__gte=previous_start,
+        created_at__lt=start_date,
+        is_deleted=False,
+        store=store
+    ).count()
+    
+    previous_sales = Sale.objects.filter(
+        created_at__gte=previous_start,
+        created_at__lt=start_date,
+        sales_representative__store=store
+    ).count()
+    
+    previous_products = Product.objects.filter(
+        created_at__gte=previous_start,
+        created_at__lt=start_date,
+        store=store
+    ).count()
+    
+    previous_revenue = Sale.objects.filter(
+        created_at__gte=previous_start,
+        created_at__lt=start_date,
+        status__in=['confirmed', 'delivered'],
+        sales_representative__store=store
+    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    
+    # Calculate percentage changes
+    def calculate_change(current, previous):
+        if previous == 0:
+            return '+100%' if current > 0 else '+0%'
+        change = ((current - previous) / previous) * 100
+        return f"{'+' if change >= 0 else ''}{change:.1f}%"
+    
+    # Get recent activities for this store
+    recent_activities = []
+    
+    # Recent clients
+    recent_clients = Client.objects.filter(
+        created_at__gte=end_date - timedelta(days=7),
+        is_deleted=False,
+        store=store
+    ).order_by('-created_at')[:3]
+    
+    for client in recent_clients:
+        recent_activities.append({
+            'type': 'customer',
+            'message': 'New customer added',
+            'details': f"{client.full_name} - {client.created_at.strftime('%b %d, %I:%M %p')}",
+            'icon': 'users',
+            'timestamp': client.created_at
+        })
+    
+    # Recent sales
+    recent_sales = Sale.objects.filter(
+        created_at__gte=end_date - timedelta(days=7),
+        sales_representative__store=store
+    ).order_by('-created_at')[:3]
+    
+    for sale in recent_sales:
+        recent_activities.append({
+            'type': 'sale',
+            'message': 'Sale completed',
+            'details': f"Order #{sale.order_number} - ₹{sale.total_amount:,.0f} - {sale.created_at.strftime('%b %d, %I:%M %p')}",
+            'icon': 'trending',
+            'timestamp': sale.created_at
+        })
+    
+    # Recent appointments (if appointments model exists)
+    try:
+        from apps.clients.models import Appointment
+        recent_appointments = Appointment.objects.filter(
+            created_at__gte=end_date - timedelta(days=7),
+            assigned_to__store=store
+        ).order_by('-created_at')[:3]
+        
+        for appointment in recent_appointments:
+            recent_activities.append({
+                'type': 'appointment',
+                'message': 'Appointment scheduled',
+                'details': f"{appointment.client.full_name} - {appointment.date.strftime('%b %d, %I:%M %p')}",
+                'icon': 'calendar',
+                'timestamp': appointment.created_at
+            })
+    except ImportError:
+        pass  # Appointments model might not be available
+    
+    # Sort activities by timestamp
+    recent_activities.sort(key=lambda x: x['timestamp'], reverse=True)
+    recent_activities = recent_activities[:5]  # Limit to 5 most recent
+    
+    # Remove timestamp from response
+    for activity in recent_activities:
+        activity.pop('timestamp', None)
+    
+    # Total counts for this store
+    total_clients = Client.objects.filter(is_deleted=False, store=store).count()
+    total_sales = Sale.objects.filter(sales_representative__store=store).count()
+    total_products = Product.objects.filter(store=store).count()
+    total_revenue = Sale.objects.filter(
+        status__in=['confirmed', 'delivered'],
+        sales_representative__store=store
+    ).aggregate(total=Sum('total_amount'))['total'] or 0
+    
+    # Store-specific information
+    store_info = {
+        'id': store.id,
+        'name': store.name,
+        'address': store.address,
+        'phone': store.phone,
+        'email': store.email
+    }
+    
+    return Response({
+        'store_info': store_info,
+        'total_customers': total_clients,
+        'total_sales': total_sales,
+        'total_products': total_products,
+        'total_revenue': float(total_revenue),
+        'customers_change': calculate_change(current_clients, previous_clients),
+        'sales_change': calculate_change(current_sales, previous_sales),
+        'products_change': calculate_change(current_products, previous_products),
+        'revenue_change': calculate_change(current_revenue, previous_revenue),
+        'recent_activities': recent_activities,
+        'scope': 'store',
+        'period': '30_days'
     })

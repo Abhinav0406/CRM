@@ -70,8 +70,14 @@ export default function SalesTeamPage() {
     try {
       setLoading(true);
       const response = await apiService.get('/users/sales-team/performance/');
-      if (response.success) {
-        setTeamPerformance(response.data);
+      if (response.success && response.data) {
+        // Type guard to ensure data matches TeamPerformance structure
+        const data = response.data as any;
+        if (data.summary && data.performance_data) {
+          setTeamPerformance(data as TeamPerformance);
+        } else {
+          setError('Invalid data structure received');
+        }
       } else {
         setError(response.message || 'Failed to fetch team performance');
       }
@@ -498,7 +504,7 @@ function SalesPersonDetailModal({ salesPerson, onClose }: SalesPersonDetailModal
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">

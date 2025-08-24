@@ -71,15 +71,15 @@ export function PipelineStageStatsManager({ className }: PipelineStageStatsProps
   const [transitionLoading, setTransitionLoading] = useState(false);
 
   const pipelineStages = [
-    { name: 'Exhibition', value: 'exhibition', color: 'bg-blue-100 text-blue-800 border-blue-200' },
-    { name: 'Social Media', value: 'social_media', color: 'bg-purple-100 text-purple-800 border-purple-200' },
-    { name: 'Interested', value: 'interested', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-    { name: 'Store - Walkin', value: 'store_walkin', color: 'bg-green-100 text-green-800 border-green-200' },
-    { name: 'Negotiation', value: 'negotiation', color: 'bg-orange-100 text-orange-800 border-orange-200' },
-    { name: 'Closed Won', value: 'closed_won', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-    { name: 'Closed Lost', value: 'closed_lost', color: 'bg-red-100 text-red-800 border-red-200' },
-    { name: 'Future Prospect', value: 'future_prospect', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
-    { name: 'Not Qualified', value: 'not_qualified', color: 'bg-gray-100 text-gray-800 border-gray-200' },
+    { name: 'Exhibition', value: 'exhibition', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Social Media', value: 'social_media', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Interested', value: 'interested', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Store - Walkin', value: 'store_walkin', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Negotiation', value: 'negotiation', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Closed Won', value: 'closed_won', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Closed Lost', value: 'closed_lost', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Future Prospect', value: 'future_prospect', color: 'bg-white text-gray-800 border-gray-200' },
+    { name: 'Not Qualified', value: 'not_qualified', color: 'bg-white text-gray-800 border-gray-200' },
   ];
 
   useEffect(() => {
@@ -324,13 +324,13 @@ export function PipelineStageStatsManager({ className }: PipelineStageStatsProps
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="text-2xl font-bold mb-2">
-                  {stage.count}
-                </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-3xl font-bold mb-3 text-green-600">
                   {formatCurrency(stage.value_sum)}
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
+                <div className="text-sm text-gray-600 mb-2">
+                  {stage.count} customers
+                </div>
+                <div className="text-xs text-gray-500">
                   Click to view customers
                 </div>
               </CardContent>
@@ -714,3 +714,4 @@ export function PipelineStageStatsManager({ className }: PipelineStageStatsProps
     </div>
   );
 }
+

@@ -192,11 +192,34 @@ export default function BusinessAdminPurchasesPage() {
   const fetchStores = async () => {
     try {
       const response = await apiService.getStores();
-      if (response.success) {
-        setStores(response.data || []);
+      console.log("Stores API response:", response);
+      
+      let storesData = [];
+      
+      if (response.success && response.data) {
+        if (Array.isArray(response.data)) {
+          storesData = response.data;
+        } else if (response.data.results && Array.isArray(response.data.results)) {
+          storesData = response.data.results;
+        }
+      } else if (Array.isArray(response)) {
+        storesData = response;
+      } else if (response.data && Array.isArray(response.data)) {
+        storesData = response.data;
+      } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
+        storesData = response.data.results;
+      }
+      
+      if (Array.isArray(storesData)) {
+        console.log("Stores data:", storesData);
+        setStores(storesData);
+      } else {
+        console.error("Invalid stores response format:", response);
+        setStores([]);
       }
     } catch (error) {
       console.error("Error fetching stores:", error);
+      setStores([]);
     }
   };
 
@@ -232,10 +255,15 @@ export default function BusinessAdminPurchasesPage() {
   };
 
   const filteredData = [...(purchases || []), ...(closedWonDeals || [])].filter((item) => {
+    // Add null checks for client and full_name
+    if (!item.client || !item.client.full_name) {
+      return false;
+    }
+
     const matchesSearch = 
-      item.client.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item as any).product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item as SalesPipeline).title?.toLowerCase().includes(searchTerm.toLowerCase());
+      item.client.full_name.toLowerCase().includes((searchTerm || "").toLowerCase()) ||
+      (item as any).product_name?.toLowerCase()?.includes((searchTerm || "").toLowerCase()) ||
+      (item as SalesPipeline).title?.toLowerCase()?.includes((searchTerm || "").toLowerCase());
 
     const matchesStore = filterStore === "all" || 
       (item.client.store && item.client.store.id.toString() === filterStore);
@@ -254,6 +282,10 @@ export default function BusinessAdminPurchasesPage() {
       return amountB - amountA;
     }
     if (sortBy === "name") {
+      // Add null check for client.full_name
+      if (!a.client?.full_name || !b.client?.full_name) {
+        return 0;
+      }
       return a.client.full_name.localeCompare(b.client.full_name);
     }
     if (sortBy === "store") {
@@ -347,6 +379,7 @@ export default function BusinessAdminPurchasesPage() {
           <CardContent>
             <div className="text-2xl font-bold">
               {new Set([...purchases, ...closedWonDeals].map(item => item.client.store?.id).filter(Boolean)).size}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -384,7 +417,7 @@ export default function BusinessAdminPurchasesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Stores</SelectItem>
-                {stores.map((store) => (
+                {Array.isArray(stores) && stores.map((store) => (
                   <SelectItem key={store.id} value={store.id.toString()}>
                     {store.name}
                   </SelectItem>

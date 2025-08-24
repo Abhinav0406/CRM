@@ -10,6 +10,7 @@ import { apiService } from '@/lib/api-service';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import AnnouncementDetailModal from '@/components/announcements/AnnouncementDetailModal';
 
 interface Announcement {
   id: number;
@@ -20,12 +21,30 @@ interface Announcement {
   status: string;
   created_at: string;
   author: {
+    id: number;
     username: string;
     first_name: string;
     last_name: string;
+    role: string;
   };
   is_read_by_current_user: boolean;
   is_acknowledged_by_current_user: boolean;
+  // Additional properties needed for AnnouncementDetailModal
+  priority_color?: string;
+  is_pinned: boolean;
+  requires_acknowledgment: boolean;
+  target_roles: string[];
+  target_stores: Array<{ id: number; name: string; code: string }>;
+  target_tenants: Array<{ id: number; name: string; slug: string }>;
+  publish_at: string;
+  expires_at?: string;
+  updated_at: string;
+  is_active: boolean;
+  tenant: {
+    id: number;
+    name: string;
+    slug: string;
+  };
 }
 
 interface NewAnnouncement {
@@ -388,9 +407,7 @@ export default function ManagerAnnouncementsPage() {
                          Acknowledge
                        </Button>
                      )}
-                     <Button variant="ghost" size="icon">
-                       <Eye className="w-4 h-4" />
-                     </Button>
+                     <AnnouncementDetailModal announcement={announcement} />
                    </div>
                 </div>
               </Card>

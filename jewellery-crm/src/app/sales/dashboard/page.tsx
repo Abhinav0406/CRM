@@ -1,254 +1,392 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
-import { TrendingUp, Users, Percent, ShoppingBag, Calendar, DollarSign } from 'lucide-react';
+import { BarChart2, PieChart, TrendingUp, Users, Percent, Activity, TrendingDown, ArrowUpRight, ArrowDownRight, DollarSign, ShoppingBag, Calendar, Target } from 'lucide-react';
 import { apiService } from '@/lib/api-service';
-import { Sale, Client, Appointment } from '@/lib/api-service';
+import { useToast } from '@/hooks/use-toast';
 
 interface SalesStats {
-  totalSales: number;
-  totalDeals: number;  // This now represents total sales (including closed won pipelines)
-  totalCustomers: number;
-  conversionRate: number;
-  monthlyRevenue: number;
-  pendingOrders: number;
-}
-
-interface RecentActivity {
-  id: number;
-  type: 'sale' | 'appointment' | 'customer';
-  title: string;
-  description: string;
-  amount?: number;
-  date: string;
+  monthly_revenue: number;
+  total_sales: number;
+  customers: number;
+  conversion_rate: number;
+  recent_activities: any[];
+  top_products: any[];
 }
 
 export default function SalesDashboardPage() {
+  const { toast } = useToast();
   const [stats, setStats] = useState<SalesStats>({
-    totalSales: 0,
-    totalDeals: 0,
-    totalCustomers: 0,
-    conversionRate: 0,
-    monthlyRevenue: 0,
-    pendingOrders: 0,
+    monthly_revenue: 0,
+    total_sales: 0,
+    customers: 0,
+    conversion_rate: 0,
+    recent_activities: [],
+    top_products: []
   });
-  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
-  const [topProducts, setTopProducts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    fetchSalesData();
+  }, []);
+
+  const fetchSalesData = async () => {
       try {
         setLoading(true);
-        console.log('Starting to fetch dashboard data...');
+      setError(null);
+      
+      console.log('Fetching real sales dashboard data...');
         
-        // Fetch sales dashboard data (includes sales + closed won pipeline)
+      // Fetch sales dashboard data
         const dashboardResponse = await apiService.getSalesDashboard();
-        console.log('Sales Dashboard API response:', dashboardResponse);
+      console.log('Sales Dashboard response:', dashboardResponse);
         
         if (dashboardResponse.success && dashboardResponse.data) {
           const dashboardData = dashboardResponse.data;
+        console.log('Dashboard data:', dashboardData);
+        
+        // Fetch recent appointments for activities
+        const appointmentsResponse = await apiService.getAppointments();
+        console.log('Appointments response:', appointmentsResponse);
+        
+        let recentActivities = [];
+        if (appointmentsResponse.success && appointmentsResponse.data) {
+          const appointments = Array.isArray(appointmentsResponse.data) 
+            ? appointmentsResponse.data 
+            : (appointmentsResponse.data as any)?.results || [];
           
-          setStats({
-            totalSales: dashboardData.sales_count || 0,
-            totalDeals: dashboardData.total_deals || 0,
-            totalCustomers: dashboardData.total_customers || 0,
-            conversionRate: dashboardData.conversion_rate || 0,
-            monthlyRevenue: dashboardData.monthly_revenue || 0,
-            pendingOrders: 0, // This would need to be calculated separately if needed
+          recentActivities = appointments.slice(0, 6).map((appointment: any) => ({
+            type: 'appointment',
+            title: appointment.purpose || 'Appointment',
+            date: new Date(appointment.date).toLocaleDateString('en-IN'),
+            time: appointment.time || 'N/A'
+          }));
+        }
+        
+        // Fetch recent sales for activities
+        const salesResponse = await apiService.getSales();
+        console.log('Sales response:', salesResponse);
+        
+        let salesActivities = [];
+        if (salesResponse.success && salesResponse.data) {
+          const sales = Array.isArray(salesResponse.data) 
+            ? salesResponse.data 
+            : (salesResponse.data as any)?.results || [];
+          
+          salesActivities = sales.slice(0, 3).map((sale: any) => ({
+            type: 'sale',
+            title: `Sale #${sale.order_number}`,
+            date: new Date(sale.created_at).toLocaleDateString('en-IN'),
+            time: new Date(sale.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            amount: sale.total_amount
+          }));
+        }
+        
+        // Combine and sort activities
+        const allActivities = [...recentActivities, ...salesActivities];
+        allActivities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        // Get top products from customer interests instead of sales
+        let topProducts: Array<{name: string, sales: number, rank: number}> = [];
+        
+        // Fetch customers to get their interests
+        const customersResponse = await apiService.getClients();
+        console.log('Customers response:', customersResponse);
+        
+        if (customersResponse.success && customersResponse.data) {
+          const customers = Array.isArray(customersResponse.data) 
+            ? customersResponse.data 
+            : (customersResponse.data as any)?.results || [];
+          
+          // Group customer interests by product and calculate popularity
+          const productInterests = new Map();
+          
+          customers.forEach((customer: any) => {
+            if (customer.customer_interests && Array.isArray(customer.customer_interests)) {
+              customer.customer_interests.forEach((interest: any) => {
+                if (interest.product && interest.product.name) {
+                  const productName = interest.product.name;
+                  const currentCount = productInterests.get(productName) || 0;
+                  productInterests.set(productName, currentCount + 1);
+                }
+              });
+            }
           });
           
-          console.log('Dashboard stats set:', dashboardData);
-        } else {
-          console.error('Failed to fetch dashboard data:', dashboardResponse);
+          // Convert to array and sort by interest count
+          const productArray = Array.from(productInterests.entries()).map(([name, count]) => ({
+            name,
+            sales: count as number // Using 'sales' field for consistency, but it's actually interest count
+          }));
+          
+          // Sort by interest count (descending) and take top 4
+          topProducts = productArray
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, 4)
+            .map((product, index) => ({
+              ...product,
+              rank: index + 1
+            }));
+          
+          console.log('Top products from customer interests:', topProducts);
         }
         
-        // Fetch recent activities (appointments)
-        const appointmentsResponse = await apiService.getAppointments();
-        console.log('Appointments API response:', appointmentsResponse);
-        
-        // Handle different response structures
-        let appointments: any[] = [];
-        if (appointmentsResponse.data) {
-          if (Array.isArray(appointmentsResponse.data)) {
-            appointments = appointmentsResponse.data;
-          } else if (typeof appointmentsResponse.data === 'object' && 'results' in appointmentsResponse.data) {
-            appointments = (appointmentsResponse.data as any).results;
-          } else if (typeof appointmentsResponse.data === 'object' && 'data' in appointmentsResponse.data) {
-            appointments = (appointmentsResponse.data as any).data;
-          } else {
-            appointments = [appointmentsResponse.data];
-          }
+        // If no customer interests data, show a message
+        if (topProducts.length === 0) {
+          topProducts = [
+            { name: 'No customer interests available', rank: 1, sales: 0 }
+          ];
         }
-        console.log('Processed appointments data:', appointments);
-        console.log('Appointments count:', appointments.length);
-
-        // Prepare recent activities
-        const activities: RecentActivity[] = [];
         
-        // Add recent appointments
-        if (Array.isArray(appointments)) {
-          try {
-            appointments.slice(0, 8).forEach((appointment: any) => {
-              activities.push({
-                id: appointment?.id || 0,
-                type: 'appointment',
-                title: `Appointment`,
-                description: appointment?.purpose || 'No purpose specified',
-                date: appointment?.date || new Date().toISOString(),
-              });
-            });
-          } catch (error) {
-            console.error('Error processing appointments for activities:', error);
-          }
-        }
-
-        // Sort by date and take top 8
-        activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setRecentActivities(activities.slice(0, 8));
-
-        // Mock top products (in real implementation, this would come from backend)
-        setTopProducts(['Gold Necklace', 'Diamond Ring', 'Silver Anklet', 'Pearl Earrings']);
-
-        console.log('Dashboard data fetch completed successfully');
-
+        setStats({
+          monthly_revenue: dashboardData.monthly_revenue || 0,
+          total_sales: dashboardData.sales_count || 0,
+          customers: dashboardData.total_customers || 0,
+          conversion_rate: dashboardData.conversion_rate || 0,
+          recent_activities: allActivities.slice(0, 6),
+          top_products: topProducts
+        });
+        
+        setLastUpdated(new Date());
+        
+        toast({
+          title: "Dashboard Updated",
+          description: "Successfully loaded real sales data",
+          variant: "default",
+        });
+      } else {
+        console.error('Failed to fetch dashboard data:', dashboardResponse);
+        setError('Failed to fetch sales dashboard data');
+        toast({
+          title: "Error",
+          description: 'Failed to fetch sales dashboard data',
+          variant: "destructive",
+        });
+      }
       } catch (error: any) {
-        console.error('Error fetching dashboard data:', error);
-        console.error('Error details:', {
-          message: error?.message || 'Unknown error',
-          stack: error?.stack || 'No stack trace',
-          name: error?.name || 'Unknown error type'
+      console.error('Error fetching sales data:', error);
+      setError('Failed to fetch sales data. Please try again.');
+      toast({
+        title: "Error",
+        description: 'Failed to fetch sales data. Please try again.',
+        variant: "destructive",
         });
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
-  }, []);
-
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-    }).format(amount);
+    return `₹${amount.toLocaleString('en-IN')}`;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN');
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed(1)}%`;
+  };
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'appointment':
+        return <Calendar className="w-4 h-4 text-blue-500" />;
+      case 'followup':
+        return <Users className="w-4 h-4 text-green-500" />;
+      case 'demo':
+        return <Target className="w-4 h-4 text-purple-500" />;
+      case 'sale':
+        return <ShoppingBag className="w-4 h-4 text-green-600" />;
+      default:
+        return <Activity className="w-4 h-4 text-gray-500" />;
+    }
   };
 
   if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
     return (
       <div className="flex flex-col gap-8">
         <div className="mb-2">
           <h1 className="text-2xl font-semibold text-text-primary">Sales Dashboard</h1>
           <p className="text-text-secondary mt-1">Track your personal sales performance</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="flex flex-row items-center gap-4 p-5 animate-pulse">
-              <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
-              <div className="flex-1">
-                <div className="h-6 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded"></div>
+        
+        <Card className="p-8 text-center">
+          <div className="text-red-500 mb-4">
+            <Activity className="w-16 h-16 mx-auto" />
               </div>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">Unable to Load Dashboard</h3>
+          <p className="text-text-secondary mb-4">{error}</p>
+          <button
+            onClick={fetchSalesData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Try Again
+          </button>
             </Card>
-          ))}
-        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="mb-2">
-        <h1 className="text-2xl font-semibold text-text-primary">Sales Dashboard</h1>
-        <p className="text-text-secondary mt-1">Track your personal sales performance</p>
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-text-primary">Sales Dashboard</h1>
+          <p className="text-text-secondary mt-2 text-lg">Track your personal sales performance and achievements</p>
+          {lastUpdated && (
+            <p className="text-xs text-text-muted mt-2">
+              Last updated: {lastUpdated.toLocaleString('en-IN', { 
+                dateStyle: 'medium', 
+                timeStyle: 'short' 
+              })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={fetchSalesData}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
+        >
+          <BarChart2 className="w-4 h-4" />
+          Refresh Data
+        </button>
       </div>
       
+      {/* Key Performance Indicators */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="flex flex-row items-center gap-4 p-5">
-          <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full mr-2">
+        <Card className="p-6 border-l-4 border-l-blue-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary mb-1">Monthly Revenue</p>
+              <p className="text-2xl font-bold text-text-primary">{formatCurrency(stats.monthly_revenue)}</p>
+              <p className="text-xs text-text-muted mt-1">Current month earnings</p>
+            </div>
+            <div className="p-3 bg-blue-50 rounded-full">
             <DollarSign className="w-6 h-6 text-blue-600" />
           </div>
-          <div>
-            <div className="text-xl font-bold text-text-primary">{formatCurrency(stats.monthlyRevenue)}</div>
-            <div className="text-sm text-text-secondary font-medium">Monthly Revenue</div>
           </div>
         </Card>
         
-        <Card className="flex flex-row items-center gap-4 p-5">
-          <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mr-2">
+        <Card className="p-6 border-l-4 border-l-green-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary mb-1">Total Sales</p>
+              <p className="text-2xl font-bold text-text-primary">{stats.total_sales}</p>
+              <p className="text-xs text-text-muted mt-1">Sales + Closed deals</p>
+            </div>
+            <div className="p-3 bg-green-50 rounded-full">
             <ShoppingBag className="w-6 h-6 text-green-600" />
           </div>
-          <div>
-            <div className="text-xl font-bold text-text-primary">{stats.totalDeals}</div>
-            <div className="text-sm text-text-secondary font-medium">Total Sales</div>
           </div>
         </Card>
         
-        <Card className="flex flex-row items-center gap-4 p-5">
-          <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-full mr-2">
+        <Card className="p-6 border-l-4 border-l-purple-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary mb-1">Customers</p>
+              <p className="text-2xl font-bold text-text-primary">{stats.customers}</p>
+              <p className="text-xs text-text-muted mt-1">Total customer base</p>
+            </div>
+            <div className="p-3 bg-purple-50 rounded-full">
             <Users className="w-6 h-6 text-purple-600" />
           </div>
-          <div>
-            <div className="text-xl font-bold text-text-primary">{stats.totalCustomers}</div>
-            <div className="text-sm text-text-secondary font-medium">Customers</div>
           </div>
         </Card>
         
-        <Card className="flex flex-row items-center gap-4 p-5">
-          <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full mr-2">
+        <Card className="p-6 border-l-4 border-l-orange-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary mb-1">Conversion Rate</p>
+              <p className="text-2xl font-bold text-text-primary">{formatPercentage(stats.conversion_rate)}</p>
+              <p className="text-xs text-text-muted mt-1">Deals per customer</p>
+            </div>
+            <div className="p-3 bg-orange-50 rounded-full">
             <Percent className="w-6 h-6 text-orange-600" />
           </div>
-          <div>
-            <div className="text-xl font-bold text-text-primary">{stats.conversionRate}%</div>
-            <div className="text-sm text-text-secondary font-medium">Conversion Rate</div>
           </div>
         </Card>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Bottom Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Activity */}
         <Card className="p-6">
-          <div className="font-semibold mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            Recent Activity
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-text-primary">Recent Activity</h3>
+            <Calendar className="w-5 h-5 text-blue-500" />
           </div>
-          <div className="space-y-3">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((activity) => (
-                <div key={`${activity.type}-${activity.id}`} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-text-primary">{activity.title}</div>
-                    <div className="text-xs text-text-secondary">{activity.description}</div>
+          <div className="space-y-4">
+            {stats.recent_activities.map((activity, index) => (
+              <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-center w-8 h-8 bg-white rounded-full shadow-sm">
+                  {getActivityIcon(activity.type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-text-primary truncate">{activity.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-text-secondary">{activity.date}</span>
+                    <span className="text-xs text-text-muted">•</span>
+                    <span className="text-xs text-text-muted">{activity.time}</span>
                     {activity.amount && (
-                      <div className="text-xs font-medium text-green-600 mt-1">
-                        {formatCurrency(activity.amount)}
+                      <>
+                        <span className="text-xs text-text-muted">•</span>
+                        <span className="text-xs font-medium text-green-600">
+                          ₹{activity.amount.toLocaleString('en-IN')}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        
+        {/* Top Products */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-text-primary">Top Products</h3>
+            <TrendingUp className="w-5 h-5 text-green-500" />
+          </div>
+          <div className="space-y-4">
+            {stats.top_products.length === 0 || (stats.top_products.length === 1 && stats.top_products[0].sales === 0) ? (
+              <div className="text-center py-8">
+                <TrendingUp className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">No customer interests data available</p>
+                <p className="text-xs text-gray-400 mt-1">Start adding customer interests to see popular products</p>
+              </div>
+            ) : (
+              stats.top_products.map((product, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold text-blue-600">#{product.rank}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">{product.name}</p>
+                      <p className="text-xs text-text-secondary">{product.sales} customers interested</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {product.sales > 0 && (
+                      <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 rounded-full" 
+                          style={{ width: `${(product.sales / stats.top_products[0].sales) * 100}%` }}
+                        ></div>
                       </div>
                     )}
-                    <div className="text-xs text-text-secondary mt-1">
-                      {formatDate(activity.date)}
-                    </div>
                   </div>
                 </div>
               ))
-            ) : (
-              <div className="text-sm text-text-secondary">No recent activity</div>
             )}
-          </div>
-        </Card>
-        
-        <Card className="p-6">
-          <div className="font-semibold mb-4">Top Products</div>
-          <div className="space-y-2">
-            {topProducts.map((product, index) => (
-              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                <span className="text-sm text-text-primary">{product}</span>
-                <span className="text-xs text-text-secondary">#{index + 1}</span>
-              </div>
-            ))}
           </div>
         </Card>
       </div>

@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { apiService } from '@/lib/api-service';
 import { Bell, Plus, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
 
 interface AddAnnouncementModalProps {
   onSuccess?: () => void;
@@ -42,8 +43,17 @@ export default function AddAnnouncementModal({ onSuccess }: AddAnnouncementModal
     expires_at: '',
   });
 
+  // Add debugging for user role
+  const { user } = useAuth();
+  
+  console.log('AddAnnouncementModal - User:', user);
+  console.log('AddAnnouncementModal - User role:', user?.role);
+  console.log('AddAnnouncementModal - Can create announcement:', user?.role === 'manager' || user?.role === 'inhouse_sales' || user?.role === 'business_admin');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('Submitting announcement with data:', formData);
     
     if (!formData.title.trim() || !formData.content.trim()) {
       toast.error('Please fill in all required fields');
@@ -53,10 +63,13 @@ export default function AddAnnouncementModal({ onSuccess }: AddAnnouncementModal
     try {
       setLoading(true);
       
+      console.log('Calling createAnnouncement API...');
       const response = await apiService.createAnnouncement({
         ...formData,
         expires_at: formData.expires_at || undefined,
       });
+
+      console.log('Create announcement response:', response);
 
       if (response.success) {
         toast.success('Announcement created successfully!');
@@ -74,7 +87,8 @@ export default function AddAnnouncementModal({ onSuccess }: AddAnnouncementModal
         });
         onSuccess?.();
       } else {
-        toast.error('Failed to create announcement');
+        console.error('Failed to create announcement:', response);
+        toast.error(response.message || 'Failed to create announcement');
       }
     } catch (error) {
       console.error('Error creating announcement:', error);

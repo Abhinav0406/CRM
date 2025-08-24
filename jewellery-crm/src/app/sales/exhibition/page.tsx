@@ -15,7 +15,6 @@ interface Client {
   id: number;
   first_name: string;
   last_name: string;
-  full_name?: string;
   email: string;
   phone?: string;
   status?: string;
@@ -187,15 +186,14 @@ export default function SalesExhibitionPage() {
       setSubmitting(true);
       
       // Create new client with exhibition status
-      const response = await apiService.createClient({
+      const response = await apiService.createExhibitionLead({
         first_name: formData.fullName.split(' ')[0] || formData.fullName,
         last_name: formData.fullName.split(' ').slice(1).join(' ') || '',
         email: formData.email || '',
         phone: formData.phone,
         city: formData.city || '',
-        status: 'exhibition',
-        lead_source: 'exhibition',
-        customer_type: 'exhibition_lead'
+        notes: '',
+        customer_type: 'individual'
       });
 
       if (response.success) {
@@ -246,8 +244,9 @@ export default function SalesExhibitionPage() {
   };
 
   const filteredLeads = Array.isArray(exhibitionLeads) ? exhibitionLeads.filter(lead => {
+    const fullName = `${lead.first_name} ${lead.last_name}`.toLowerCase();
     const matchesSearch = 
-      lead.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fullName.includes(searchTerm.toLowerCase()) ||
       lead.phone?.includes(searchTerm) ||
       lead.email?.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -381,7 +380,9 @@ export default function SalesExhibitionPage() {
                       </div>
                     </div>
                     <div>
-                      <h4 className="text-sm font-medium text-gray-900">{lead.full_name}</h4>
+                      <h4 className="text-sm font-medium text-gray-900">
+                        {lead.first_name} {lead.last_name}
+                      </h4>
                       <div className="flex items-center space-x-4 text-sm text-gray-500">
                         {lead.phone && (
                           <span className="flex items-center">
