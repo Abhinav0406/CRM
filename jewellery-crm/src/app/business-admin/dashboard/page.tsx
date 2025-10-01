@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { apiService } from '@/lib/api-service';
-import { Users, TrendingUp, Package, DollarSign, Calendar, ShoppingBag, Loader2, Target, Store, Award, Filter, X, CheckCircle } from 'lucide-react';
+import { Users, TrendingUp, Package, DollarSign, Calendar, ShoppingBag, Loader2, Target, Store, Award, Filter, X, CheckCircle, ArrowRight } from 'lucide-react';
 
 import { NotificationBell } from '@/components/notifications';
 
@@ -679,14 +679,20 @@ export default function BusinessAdminDashboard() {
             {dashboardData.store_performance.map((store, index) => (
               <div 
                 key={store.id} 
-                className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 hover:shadow-md hover:scale-[1.02] transition-all duration-200 border-gray-200 hover:border-blue-300 group"
                 onClick={() => handleStoreCardClick(store.id)}
               >
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-text-primary">{store.name}</h3>
-                  <Badge variant="outline" className="text-xs">
-                    Store {index + 1}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      Store {index + 1}
+                    </Badge>
+                    <div className="flex items-center gap-1 text-blue-600">
+                      <span className="text-xs font-medium">View details</span>
+                      <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" />
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">

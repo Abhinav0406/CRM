@@ -499,26 +499,26 @@ class TeamMemberUpdateView(generics.UpdateAPIView):
         """Filter team members based on user's role and tenant."""
         user = self.request.user
         
-        # Get the user ID from the URL parameter
-        user_id = self.kwargs.get('pk')
+        # Get the team member ID from the URL parameter
+        team_member_id = self.kwargs.get('pk')
         
         if user.is_platform_admin:
             # Platform admin can update any team member
-            if user_id:
-                return TeamMember.objects.filter(user_id=user_id)
+            if team_member_id:
+                return TeamMember.objects.filter(id=team_member_id)
             return TeamMember.objects.all()
         
         if user.is_business_admin and user.tenant:
             # Business admin can update team members in their tenant
-            if user_id:
-                return TeamMember.objects.filter(user_id=user_id, user__tenant=user.tenant)
+            if team_member_id:
+                return TeamMember.objects.filter(id=team_member_id, user__tenant=user.tenant)
             return TeamMember.objects.filter(user__tenant=user.tenant)
         
         if user.is_manager:
             # Manager can update team members they manage or in their store
-            if user_id:
+            if team_member_id:
                 return TeamMember.objects.filter(
-                    user_id=user_id
+                    id=team_member_id
                 ).filter(
                     Q(user=user) | Q(manager__user=user) | Q(user__store=user.store)
                 )
@@ -527,8 +527,8 @@ class TeamMemberUpdateView(generics.UpdateAPIView):
             )
         
         # Other users can only update themselves
-        if user_id:
-            return TeamMember.objects.filter(user_id=user_id, user=user)
+        if team_member_id:
+            return TeamMember.objects.filter(id=team_member_id, user=user)
         return TeamMember.objects.filter(user=user)
 
     def perform_update(self, serializer):
@@ -585,26 +585,26 @@ class TeamMemberDeleteView(generics.DestroyAPIView):
         """Filter team members based on user's role and tenant."""
         user = self.request.user
         
-        # Get the user ID from the URL parameter
-        user_id = self.kwargs.get('pk')
+        # Get the team member ID from the URL parameter
+        team_member_id = self.kwargs.get('pk')
         
         if user.is_platform_admin:
             # Platform admin can delete any team member
-            if user_id:
-                return TeamMember.objects.filter(user_id=user_id)
+            if team_member_id:
+                return TeamMember.objects.filter(id=team_member_id)
             return TeamMember.objects.all()
         
         if user.is_business_admin and user.tenant:
             # Business admin can delete team members in their tenant
-            if user_id:
-                return TeamMember.objects.filter(user_id=user_id, user__tenant=user.tenant)
+            if team_member_id:
+                return TeamMember.objects.filter(id=team_member_id, user__tenant=user.tenant)
             return TeamMember.objects.filter(user__tenant=user.tenant)
         
         if user.is_manager:
             # Manager can delete team members they manage or in their store
-            if user_id:
+            if team_member_id:
                 return TeamMember.objects.filter(
-                    user_id=user_id
+                    id=team_member_id
                 ).filter(
                     Q(user=user) | Q(manager__user=user) | Q(user__store=user.store)
                 )
@@ -613,8 +613,8 @@ class TeamMemberDeleteView(generics.DestroyAPIView):
             )
         
         # Other users can only delete themselves
-        if user_id:
-            return TeamMember.objects.filter(user_id=user_id, user=user)
+        if team_member_id:
+            return TeamMember.objects.filter(id=team_member_id, user=user)
         return TeamMember.objects.filter(user=user)
 
     def perform_destroy(self, instance):

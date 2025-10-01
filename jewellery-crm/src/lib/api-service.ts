@@ -1389,6 +1389,18 @@ class ApiService {
     return this.request(`/stores/${storeId}/team/`);
   }
 
+  async getStorePerformance(storeId: string): Promise<ApiResponse<any>> {
+    return this.request(`/stores/${storeId}/performance/`);
+  }
+
+  async getStoreStaff(storeId: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/stores/${storeId}/staff/`);
+  }
+
+  async getStoreRecentSales(storeId: string): Promise<ApiResponse<any[]>> {
+    return this.request(`/stores/${storeId}/recent-sales/`);
+  }
+
   async assignStoreTeam(storeId: string, assignments: any[]): Promise<ApiResponse<void>> {
     return this.request(`/stores/${storeId}/assign-team/`, {
       method: 'PATCH',
